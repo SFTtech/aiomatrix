@@ -11,3 +11,5 @@ dist/
 
 /*.conf
 /test
+
+.idea
