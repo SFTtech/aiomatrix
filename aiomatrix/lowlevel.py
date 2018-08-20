@@ -1,76 +1,89 @@
+from urllib.parse import quote_plus
+import logging
 import aiohttp
 
-from urllib.parse import quote_plus
+from aiomatrix.errors import AiomatrixError
+
 
 class AioMatrixApi():
     def __init__(self, base_url):
-        self.httpSession = aiohttp.ClientSession()
+        self.http_session = aiohttp.ClientSession()
         self.url = base_url
         self.txn_id = 0
         self.access_token = None
+        self.since_token = None
+
+    def set_access_token(self, token):
+        self.access_token = token
+
+    def set_since_token(self, token):
+        self.since_token = token
 
     async def connect(self, login_type, **kwargs):
-
         json = {"type": login_type}
         for key in kwargs:
             if kwargs[key]:
                 json[key] = kwargs[key]
 
-        return await self.__send_request('POST','login', json)
+        return await self.__send_request('POST', 'login', json)
 
-        #TODO special case in connect or in send?
-        # Special handling due to unknown access_token
-        '''async with self.httpSession.post(self.url + '/_matrix/client/r0/login', json=json) as resp:
-            if resp.status == 200:
-                return await resp.json()
-            else:
-                err = await resp.json()
-                raise Exception(err['errcode'] + ': ' + err['error'])'''
-
-    async def disconnect(self):
-        await self.httpSession.close()
+    async def close(self):
+        await self.http_session.close()
 
     async def room_join(self, room_alias_or_id):
         return await self.__send_request('POST', 'join/' + quote_plus(room_alias_or_id))
 
+    async def sync(self):
+        #TODO: Filter, how to set?
+        #TODO: timeout 30000 ->dynamic
+        if self.since_token:
+            params = {'since':self.since_token, 'full_state':'false', 'timeout':'30000'}#, 'filter':'{ "rooms": [] }'}
+        else:
+            params = {'full_state':'false', 'timeout':'30000'}
+        return await self.__send_request('GET', 'sync', json=None, params=params)
 
     # region Room Specific functions
 
     async def room_send_message(self, room_id, message):
         json = {'msgtype': 'm.text', 'body': message}
-        return await self.__send_request('PUT', 'rooms/' + quote_plus(room_id) + '/send/m.room.message/' + str(self.__get_new_txn_id()), json)
+        return await self.__send_request('PUT', 'rooms/' + quote_plus(room_id) +
+                                         '/send/m.room.message/' + str(self.__get_new_txn_id()), json)
 
     # endregion
 
     # region Private functions
 
-    async def __send_request(self, type, url_extension, json = None):
+    async def __send_request(self, http_type, url_extension, json=None, params=None):
 
-        if self.access_token == None:
-            if type == 'POST':
-                resp = await self.httpSession.post(self.url + '/_matrix/client/r0/' + url_extension,
-                                                   json=json
-                                                   )
-            else:
-                raise Exception('No access_token - Unknown HTTP method type:' + type)
+        url_params = {"access_token": self.access_token} if self.access_token else None
+        if params is not None:
+            for key in params:
+                if params[key]:
+                    url_params[key] = params[key]
+
+        if http_type == 'POST':
+            resp = await self.http_session.post(self.url + '/_matrix/client/r0/' + url_extension,
+                                                params=url_params,
+                                                json=json
+                                                )
+        elif http_type == 'PUT':
+            resp = await self.http_session.put(self.url + '/_matrix/client/r0/' + url_extension,
+                                               params=url_params,
+                                               json=json
+                                               )
+        elif http_type == 'GET':
+            resp = await self.http_session.get(self.url + '/_matrix/client/r0/' + url_extension,
+                                               params=url_params,
+                                               json=json
+                                               )
         else:
-            if type == 'POST':
-                resp = await self.httpSession.post(self.url + '/_matrix/client/r0/' + url_extension,
-                                                   params={'access_token': self.access_token},
-                                                   json=json
-                                                   )
-            elif type == 'PUT':
-                resp = await self.httpSession.put(self.url + '/_matrix/client/r0/' + url_extension,
-                                                  params={'access_token': self.access_token},
-                                                  json=json
-                                                  )
-            else:
-                raise Exception('Access_token - Unknown HTTP method type:' + type)
+            raise AiomatrixError('Access_token - Unknown HTTP method type:' + http_type)
 
         # Error handling
-        if resp.status != 200:
+        logging.debug("Response status code: \"%d\"", resp.status)
+        if resp.status < 200 or resp.status > 300:
             err = await resp.json()
-            raise Exception(err['errcode'] + ': ' + err['error'])
+            raise AiomatrixError(err['errcode'] + ': ' + err['error'])
 
         return await resp.json()
 
@@ -79,6 +92,3 @@ class AioMatrixApi():
         return self.txn_id
 
     # endregion
-
-
-

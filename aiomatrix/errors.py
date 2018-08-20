@@ -1,0 +1,2 @@
+class AiomatrixError(Exception):
+    pass

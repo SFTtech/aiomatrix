@@ -2,24 +2,30 @@ from aiomatrix.session import Session
 import asyncio
 
 
+def on_receive(room, sender, message):
+    print(room, sender, message)
+
+
 async def main():
-    #ses = Session(user="@JJ:server.org", password="asdfasdf")
-    #ses = Session(username="fuhhbarmatrixtest", password="monkey", base_url="https://matrix.org")
-    ses = Session("@fuhhbarmatrixtest:matrix.org", "monkey")
+    ses = Session("fuhhbarmatrixtest", "monkey", "https://matrix.org", log_level=20)
+    async with ses:
+    #async with Session("fuhhbarmatrixtest", "monkey", "https://matrix.org") as ses:
 
-    await ses.connect()
+        await ses.connect()
 
-    room = await ses.room_join("#fuhhbar:in.tum.de")
+        room = await ses.room_join("#fuhhbar:in.tum.de")
 
-    '''i = 0
-    while True:
-        await room.send_message("%d" % i)
-        i += 1
-        await asyncio.sleep(60)'''
+        await room.send_message("aioTestMessage")
 
-    await room.send_message("aioTestMessage")
+        await room.add_listener_receive_messages(on_receive)
 
-    await ses.disconnect()
+        #await room.del_listener_receive_messages(on_receive)
+        #or
+        #await room.del_listener_receive_messages()
+
+        while True:
+            await asyncio.sleep(20)
+            await room.send_message("randomMsg")
 
 
 loop = asyncio.get_event_loop()
