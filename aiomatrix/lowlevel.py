@@ -33,13 +33,30 @@ class AioMatrixApi():
     async def room_join(self, room_alias_or_id):
         return await self.__send_request('POST', 'join/' + quote_plus(room_alias_or_id))
 
-    async def sync(self):
-        #TODO: Filter, how to set?
-        #TODO: timeout 30000 ->dynamic
+    async def sync(self, filter_timeline_types='', filter_ephemeral_types=None, timeout=30000):
+        if filter_ephemeral_types is None:
+            filter_ephemeral_types = []
+
+        # Create filter strings
+        ephemeral_string = ''
+        for eph_type in filter_ephemeral_types:
+            if ephemeral_string:
+                ephemeral_string += ','
+            ephemeral_string += '"' + eph_type + '"'
+        timeline_string = '"' + filter_timeline_types + '"' if filter_timeline_types else ''
+
         if self.since_token:
-            params = {'since':self.since_token, 'full_state':'false', 'timeout':'30000'}#, 'filter':'{ "rooms": [] }'}
+            params = {'since':self.since_token,
+                      'full_state':'false'}
         else:
-            params = {'full_state':'false', 'timeout':'30000'}
+            params = {'full_state':'false'}
+
+        params['timeout'] = str(timeout)
+        params['filter'] = '{"room":{"timeline":{"types":[' \
+                           + timeline_string + \
+                           ']},"ephemeral": {"types": [' \
+                           + ephemeral_string + ']}}}'
+
         return await self.__send_request('GET', 'sync', json=None, params=params)
 
     # region Room Specific functions
@@ -47,7 +64,8 @@ class AioMatrixApi():
     async def room_send_message(self, room_id, message):
         json = {'msgtype': 'm.text', 'body': message}
         return await self.__send_request('PUT', 'rooms/' + quote_plus(room_id) +
-                                         '/send/m.room.message/' + str(self.__get_new_txn_id()), json)
+                                         '/send/m.room.message/'
+                                         + str(self.__get_new_txn_id()), json)
 
     # endregion
 
@@ -81,7 +99,7 @@ class AioMatrixApi():
 
         # Error handling
         logging.debug("Response status code: \"%d\"", resp.status)
-        if resp.status < 200 or resp.status > 300:
+        if resp.status != 200:
             err = await resp.json()
             raise AiomatrixError(err['errcode'] + ': ' + err['error'])
 

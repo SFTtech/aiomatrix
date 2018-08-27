@@ -4,12 +4,14 @@ import asyncio
 
 def on_receive(room, sender, message):
     print(room, sender, message)
+'''def on_receipt(room, sender, message):
+    print(room, sender, message)
+def on_typing(room, sender):
+    print(room, sender, 'typing')'''
 
 
 async def main():
-    ses = Session("fuhhbarmatrixtest", "monkey", "https://matrix.org", log_level=20)
-    async with ses:
-    #async with Session("fuhhbarmatrixtest", "monkey", "https://matrix.org") as ses:
+    async with Session("fuhhbarmatrixtest", "monkey", "https://matrix.org") as ses:
 
         await ses.connect()
 
@@ -18,10 +20,15 @@ async def main():
         await room.send_message("aioTestMessage")
 
         await room.add_listener_receive_messages(on_receive)
+        #await room.add_listener_receipt(on_receipt)
+        #await room.add_listener_typing(on_typing)
 
-        #await room.del_listener_receive_messages(on_receive)
-        #or
-        #await room.del_listener_receive_messages()
+        await room.del_listener_receive_messages(on_receive)
+        #await room.del_listener_receipt(on_receipt)
+        #await room.del_listener_typing(on_typing)
+
+        '''async for message in room.get_new_message():
+            print(message)'''
 
         while True:
             await asyncio.sleep(20)

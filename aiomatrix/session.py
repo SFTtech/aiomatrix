@@ -14,11 +14,14 @@ class Session():
         self.access_token = None
         self.sync_flag = False
         self.listen_room_messages = []
+        self.listen_room_typing = []
+        self.listen_room_receipt = []
+        self.listen_queue = asyncio.Queue(loop=asyncio.get_event_loop())
 
         logging.basicConfig(format='[%(levelname)s] %(message)s', level=log_level)
 
     async def __aenter__(self):
-        pass
+        return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         if self.api:
@@ -40,26 +43,28 @@ class Session():
                     room_alias_or_id if room_id != room_alias_or_id else None)
         return room
 
+
     #region Sync Methods
 
     async def _start_sync(self):
-        self.__set_sync_flag(True)
+        await self.__set_sync_flag(True)
 
         loop = asyncio.get_event_loop()
-        loop.create_task(self.__sync_thread())
+        loop.create_task(self.__sync_task())
 
     async def _stop_sync(self):
-        self.__set_sync_flag(False)
+        await self.__set_sync_flag(False)
 
-    async def __sync_thread(self):
+    async def __sync_task(self):
         # Remove old events (set since_token to now)
         resp_json = await self.api.sync()
         self.api.set_since_token(resp_json["next_batch"])
 
         # Start waiting for new events
         while self.sync_flag:
-            resp_json = await self.api.sync()
-            #print(resp_json)
+            filter_timeline, filter_ephemeral = self.__get_current_sync_filters()
+            resp_json = await self.api.sync(filter_timeline_types=filter_timeline,
+                                            filter_ephemeral_types=filter_ephemeral)
             self.api.set_since_token(resp_json["next_batch"])
 
             if self.listen_room_messages:
@@ -69,14 +74,45 @@ class Session():
                     if room_id in resp_json['rooms']['join']:
                         for event in resp_json['rooms']['join'][room_id]['timeline']['events']:
                             callback(room_id, event['sender'], event['content']['body'])
+                            self.listen_queue.put_nowait((room_id, event['sender'], event['content']['body']))
 
-    def __set_sync_flag(self, start):
-        # TODO: Threadsafe lists and flag?
-        if start:
-            self.sync_flag = True
-        else:
-            # Check if there is still an entry in one of the listener lists
-            if not self.listen_room_messages:
-                self.sync_flag = False
+            if self.listen_room_typing:
+                for entry in self.listen_room_typing:
+                    room_id = entry['room_id']
+                    callback = entry['callback']
+                    if room_id in resp_json['rooms']['join']:
+                        for event in resp_json['rooms']['join'][room_id]['ephemeral']['events']:
+                            if 'user_ids' in event['content']:
+                                callback(room_id, event['content']['user_ids'])
+
+            # TODO content mapping (?)
+            '''if self.listen_room_receipt:
+                for entry in self.listen_room_receipt:
+                    room_id = entry['room_id']
+                    callback = entry['callback']
+                    if room_id in resp_json['rooms']['join']:
+                        print(resp_json)'''
+
+    async def __set_sync_flag(self, start):
+        async with asyncio.Lock():
+            if start:
+                self.sync_flag = True
+            else:
+                # Check if there is still an entry in one of the listener lists
+                if not self.listen_room_messages \
+                        and not self.listen_room_receipt \
+                        and not self.listen_room_typing:
+                    self.sync_flag = False
+                    #TODO empty queue?
+
+    def __get_current_sync_filters(self):
+        timeline_filters = 'm.room.message' if self.listen_room_messages else ''
+        ephemeral_filters = []
+        if self.listen_room_receipt:
+            ephemeral_filters.append('m.receipt')
+        if self.listen_room_typing:
+            ephemeral_filters.append('m.typing')
+        return timeline_filters, ephemeral_filters
+
 
     #endregion
