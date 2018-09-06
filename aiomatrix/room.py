@@ -47,6 +47,7 @@ class Room():
         await self.session._stop_sync()
 
     async def get_new_message(self):
+        #create taks, check if already run and if does corrrect stuff otherwise kill and restart
         while self.session.sync_flag:
             room_id, sender, message = await self.session.listen_queue.get()
             yield room_id, sender, message
