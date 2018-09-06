@@ -5,7 +5,7 @@ import aiohttp
 from aiomatrix.errors import AiomatrixError
 
 
-class AioMatrixApi():
+class AioMatrixApi:
     def __init__(self, base_url):
         self.http_session = aiohttp.ClientSession()
         self.url = base_url

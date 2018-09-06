@@ -1,12 +1,12 @@
 import asyncio
 import logging
 
-from aiomatrix.lowlevel import AioMatrixApi
+from .api import client
 from aiomatrix.room import Room
 
 class Session():
     def __init__(self, username, password, base_url, device_id=None, log_level=20):
-        self.api = AioMatrixApi(base_url)
+        self.api = client.lowlevel.AioMatrixApi(base_url)
         self.url = base_url
         self.username = username
         self.password = password
