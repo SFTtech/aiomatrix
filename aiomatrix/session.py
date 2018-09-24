@@ -4,7 +4,9 @@ import logging
 from .api import client
 from aiomatrix.room import Room
 
+
 class Session():
+    """Creates a personalized connection to a matrix server."""
     def __init__(self, username, password, base_url, device_id=None, log_level=20):
         self.api = client.lowlevel.AioMatrixApi(base_url)
         self.url = base_url
@@ -16,7 +18,7 @@ class Session():
         self.listen_room_messages = []
         self.listen_room_typing = []
         self.listen_room_receipt = []
-        self.listen_queue = asyncio.Queue(loop=asyncio.get_event_loop())
+        #self.listen_queue = asyncio.Queue(loop=asyncio.get_event_loop())
 
         logging.basicConfig(format='[%(levelname)s] %(message)s', level=log_level)
 
@@ -28,6 +30,7 @@ class Session():
             await self.api.close()
 
     async def connect(self):
+        """Connects to the server and logs in using the username/password provided."""
         resp = await self.api.connect('m.login.password',
                                       user=self.username,
                                       password=self.password,
@@ -37,6 +40,10 @@ class Session():
         logging.info("Successfully connected user \"%s\".", self.username)
 
     async def room_join(self, room_alias_or_id):
+        """Joins a room.
+        :param room_alias_or_id: ID or alias of the room to join.
+        :return Room: Instance of the Room class.
+        """
         response = await self.api.room_join(room_alias_or_id)
         room_id = response['room_id']
         room = Room(self, self.api, room_id,
@@ -51,6 +58,11 @@ class Session():
 
         loop = asyncio.get_event_loop()
         loop.create_task(self.__sync_task())
+
+        #TODO help, how to compare tasks?
+        '''if self.__sync_task() in asyncio.Task.all_tasks():
+            print('yo')
+        print(asyncio.Task.all_tasks())'''
 
     async def _stop_sync(self):
         await self.__set_sync_flag(False)
@@ -74,7 +86,7 @@ class Session():
                     if room_id in resp_json['rooms']['join']:
                         for event in resp_json['rooms']['join'][room_id]['timeline']['events']:
                             callback(room_id, event['sender'], event['content']['body'])
-                            self.listen_queue.put_nowait((room_id, event['sender'], event['content']['body']))
+                            #self.listen_queue.put_nowait((room_id, event['sender'], event['content']['body']))
 
             if self.listen_room_typing:
                 for entry in self.listen_room_typing:
@@ -106,7 +118,9 @@ class Session():
                     #TODO empty queue?
 
     def __get_current_sync_filters(self):
+        # Timeline
         timeline_filters = 'm.room.message' if self.listen_room_messages else ''
+        # Ephemeral
         ephemeral_filters = []
         if self.listen_room_receipt:
             ephemeral_filters.append('m.receipt')

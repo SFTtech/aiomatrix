@@ -1,0 +1,84 @@
+import asyncio
+
+class EventManager():
+    def __init__(self, room_id, api):
+        self.room_id = room_id
+        self.api = api
+        self.sync_task = None
+        self.rec_task = None
+        self.general_queue = asyncio.Queue()
+
+        self.customer_list = {
+            'message': list(),
+            'typing':list()
+        }
+
+
+    async def cancel(self):
+        self.sync_task.cancel()
+
+    async def start(self):
+        loop = asyncio.get_event_loop()
+        #TODO wait for event first or start getting events first? Order
+        self.sync_task = loop.create_task(self.__sync_task())
+        self.rec_task = loop.create_task(self.__wait_general_event())
+
+    async def add_customer(self, event, queue):
+        self.customer_list[event].append(queue)
+
+        if len(self.customer_list[event]) == 1:
+            # restart queue, cause new event
+            await self.__restart_tasks()
+
+    async def remove_customer(self, event, queue):
+        self.customer_list[event].remove(queue)
+
+        if len(self.customer_list[event]) == 0:
+            # Restart queue, cause one type of event is no longer required
+            await self.__restart_tasks()
+
+            # Cancel tasks if all empty
+            for event_type in self.customer_list:
+                if self.customer_list[event_type]:
+                    return
+            self.sync_task.cancel()
+            self.rec_task.cancel()
+
+
+    async def __sync_task(self):
+        # Remove old events (set since_token to now)
+        resp_json = await self.api.sync()
+        self.api.set_since_token(resp_json["next_batch"])
+        # Start waiting for new events
+        while True:
+            #TODO: get Filter depending on self.customer_list (json <-> python conversion)
+            resp_json = await self.api.sync(filter_timeline_types="m.room.message", filter_ephemeral_types=['m.typing'])
+            self.api.set_since_token(resp_json["next_batch"])
+
+            if self.room_id in resp_json['rooms']['join']:
+                for event in resp_json['rooms']['join'][self.room_id]['timeline']['events']:
+                    self.general_queue.put_nowait(("message", self.room_id, event['sender'], event['content']['body']))
+
+            if self.room_id in resp_json['rooms']['join']:
+                for event in resp_json['rooms']['join'][self.room_id]['ephemeral']['events']:
+                    # The 'and' part is added, because when one stops typing you receive an empty 'm.typing' event
+                    if 'user_ids' in event['content'] and event['content']['user_ids']:
+                        self.general_queue.put_nowait(("typing", self.room_id, event['content']['user_ids']))
+
+    async def __wait_general_event(self):
+        while True:
+            event = await self.general_queue.get()
+            # TODO: correctly switch events
+            if "message" in event[0]:
+                for customer in self.customer_list['message']:
+                    customer.put_nowait(event[1:]) #TODO remove first "message" string before putting
+            elif "typing" in event[0]:
+                for customer in self.customer_list['typing']:
+                    customer.put_nowait(event[1:]) #TODO same as above
+            else:
+                print("unknown event received")
+
+    async def __restart_tasks(self):
+        if self.sync_task:
+            self.sync_task.cancel()
+        await self.start()

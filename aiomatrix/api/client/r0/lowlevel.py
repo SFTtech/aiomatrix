@@ -52,6 +52,7 @@ class AioMatrixApi:
             params = {'full_state':'false'}
 
         params['timeout'] = str(timeout)
+        #TODO only room filter atm, improve for all possible events
         params['filter'] = '{"room":{"timeline":{"types":[' \
                            + timeline_string + \
                            ']},"ephemeral": {"types": [' \
