@@ -1,9 +1,12 @@
 import asyncio
 
+from .api import client
+
 class EventManager():
     def __init__(self, room_id, api):
         self.room_id = room_id
         self.api = api
+        self.filter = client.filter.EventFilter()
         self.sync_task = None
         self.rec_task = None
         self.general_queue = asyncio.Queue()
@@ -24,9 +27,16 @@ class EventManager():
         self.rec_task = loop.create_task(self.__wait_general_event())
 
     async def add_customer(self, event, queue):
+        # TODO: check event is valid name (?)
         self.customer_list[event].append(queue)
 
         if len(self.customer_list[event]) == 1:
+            # update filter
+            if event is "message":
+                self.filter.set_filter_message()
+            if event is "typing":
+                self.filter.set_filter_typing()
+
             # restart queue, cause new event
             await self.__restart_tasks()
 
@@ -34,6 +44,12 @@ class EventManager():
         self.customer_list[event].remove(queue)
 
         if len(self.customer_list[event]) == 0:
+            # update filter
+            if event is "message":
+                self.filter.set_filter_message(False)
+            if event is "typing":
+                self.filter.set_filter_typing(False)
+
             # Restart queue, cause one type of event is no longer required
             await self.__restart_tasks()
 
@@ -51,8 +67,7 @@ class EventManager():
         self.api.set_since_token(resp_json["next_batch"])
         # Start waiting for new events
         while True:
-            #TODO: get Filter depending on self.customer_list (json <-> python conversion)
-            resp_json = await self.api.sync(filter_timeline_types="m.room.message", filter_ephemeral_types=['m.typing'])
+            resp_json = await self.api.sync(self.filter.get_filter_string())
             self.api.set_since_token(resp_json["next_batch"])
 
             if self.room_id in resp_json['rooms']['join']:

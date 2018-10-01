@@ -33,18 +33,8 @@ class AioMatrixApi:
     async def room_join(self, room_alias_or_id):
         return await self.__send_request('POST', 'join/' + quote_plus(room_alias_or_id))
 
-    async def sync(self, filter_timeline_types='', filter_ephemeral_types=None, timeout=30000):
-        if filter_ephemeral_types is None:
-            filter_ephemeral_types = []
-
-        # Create filter strings
-        ephemeral_string = ''
-        for eph_type in filter_ephemeral_types:
-            if ephemeral_string:
-                ephemeral_string += ','
-            ephemeral_string += '"' + eph_type + '"'
-        timeline_string = '"' + filter_timeline_types + '"' if filter_timeline_types else ''
-
+    #async def sync(self, filter_timeline_types='', filter_ephemeral_types=None, timeout=30000):
+    async def sync(self, filter=None, timeout=30000):
         if self.since_token:
             params = {'since':self.since_token,
                       'full_state':'false'}
@@ -53,10 +43,7 @@ class AioMatrixApi:
 
         params['timeout'] = str(timeout)
         #TODO only room filter atm, improve for all possible events
-        params['filter'] = '{"room":{"timeline":{"types":[' \
-                           + timeline_string + \
-                           ']},"ephemeral": {"types": [' \
-                           + ephemeral_string + ']}}}'
+        params['filter'] = filter
 
         return await self.__send_request('GET', 'sync', json=None, params=params)
 
