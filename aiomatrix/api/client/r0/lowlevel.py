@@ -33,8 +33,22 @@ class AioMatrixApi:
     async def room_join(self, room_alias_or_id):
         return await self.__send_request('POST', 'join/' + quote_plus(room_alias_or_id))
 
-    #async def sync(self, filter_timeline_types='', filter_ephemeral_types=None, timeout=30000):
-    async def sync(self, filter=None, timeout=30000):
+    async def room_create(self, room_alias, name, invitees, public=False,):
+
+        json = {
+            "visibility": "public" if public else "private"
+        }
+        if room_alias:
+            json["room_alias_name"] = room_alias
+        if name:
+            json["name"] = name
+        if invitees:
+            json["invite"] = invitees
+
+        return await self.__send_request('POST', 'createRoom', json)
+
+    async def sync(self, event_filter=None, timeout=30000):
+        event_filter = None # used for testing
         if self.since_token:
             params = {'since':self.since_token,
                       'full_state':'false'}
@@ -43,7 +57,8 @@ class AioMatrixApi:
 
         params['timeout'] = str(timeout)
         #TODO only room filter atm, improve for all possible events
-        params['filter'] = filter
+        if event_filter:
+            params['filter'] = event_filter
 
         return await self.__send_request('GET', 'sync', json=None, params=params)
 

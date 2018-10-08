@@ -13,7 +13,8 @@ class EventManager():
 
         self.customer_list = {
             'message': list(),
-            'typing':list()
+            'typing':list(),
+            'invite':list()
         }
 
 
@@ -43,7 +44,7 @@ class EventManager():
     async def remove_customer(self, event, queue):
         self.customer_list[event].remove(queue)
 
-        if len(self.customer_list[event]) == 0:
+        if not self.customer_list[event]:
             # update filter
             if event is "message":
                 self.filter.set_filter_message(False)
@@ -65,11 +66,13 @@ class EventManager():
         # Remove old events (set since_token to now)
         resp_json = await self.api.sync()
         self.api.set_since_token(resp_json["next_batch"])
+
         # Start waiting for new events
         while True:
             resp_json = await self.api.sync(self.filter.get_filter_string())
             self.api.set_since_token(resp_json["next_batch"])
 
+            #TODO parsing of response with filter class
             if self.room_id in resp_json['rooms']['join']:
                 for event in resp_json['rooms']['join'][self.room_id]['timeline']['events']:
                     self.general_queue.put_nowait(("message", self.room_id, event['sender'], event['content']['body']))
@@ -80,16 +83,28 @@ class EventManager():
                     if 'user_ids' in event['content'] and event['content']['user_ids']:
                         self.general_queue.put_nowait(("typing", self.room_id, event['content']['user_ids']))
 
+            if resp_json['rooms']['invite']:
+                for key in resp_json['rooms']['invite']:
+                    for event in resp_json['rooms']['invite'][key]['invite_state']['events']:
+                        if 'name' in event['content']:
+                            self.general_queue.put_nowait(("invite", key, event['content']['name'], event['sender']))
+
     async def __wait_general_event(self):
         while True:
             event = await self.general_queue.get()
             # TODO: correctly switch events
             if "message" in event[0]:
                 for customer in self.customer_list['message']:
-                    customer.put_nowait(event[1:]) #TODO remove first "message" string before putting
+                    # remove event type string and put in customers queues
+                    customer.put_nowait(event[1:])
             elif "typing" in event[0]:
                 for customer in self.customer_list['typing']:
-                    customer.put_nowait(event[1:]) #TODO same as above
+                    # remove event type string and put in customers queues
+                    customer.put_nowait(event[1:])
+            elif "invite" in event[0]:
+                for customer in self.customer_list['invite']:
+                    # remove event type string and put in customers queues
+                    customer.put_nowait(event[1:])
             else:
                 print("unknown event received")
 

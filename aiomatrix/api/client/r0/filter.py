@@ -7,20 +7,16 @@ class EventFilter:
 
 
     def get_filter_dict(self):
-        filter = \
-        {"room":
-            {
-            "timeline":
-                {
-                    "types": self.timeline
-                },
-            "ephemeral":
-                {
-                    "types": self.ephemeral
+        #TODO add invite to filter
+        event_filter = \
+            {"room":
+                {"timeline":
+                    {"types": self.timeline},
+                "ephemeral":
+                    {"types": self.ephemeral}
                 }
             }
-        }
-        return filter
+        return event_filter
 
     def get_filter_string(self):
         return json.dumps(self.get_filter_dict())

@@ -1,8 +1,7 @@
-from aiomatrix.eventManager import EventManager
 import asyncio
 
 class Room():
-    def __init__(self, session, api, room_id, room_alias=None):
+    def __init__(self, session, api, event_manager, room_id, room_alias=None):
         self.session = session
         self.api = api
         self.room_id = room_id
@@ -11,14 +10,14 @@ class Room():
         self.typing_queue = asyncio.Queue(loop=asyncio.get_event_loop())
         self.sync_task = None
         self.sync_event_list = []
-        self.event_manager = EventManager(self.room_id, self.api)
+        self.event_manager = event_manager
 
     async def send_message(self, message):
         await self.api.room_send_message(self.room_id, message)
 
     #region Listeners
 
-    #TODO general methods to add/remove listeners (too much copy paste)
+    ''''#TODO general methods to add/remove listeners (too much copy paste)
     async def add_listener_receive_messages(self, callback):
         self.session.listen_room_messages.append({'room_id': self.room_id, 'callback': callback})
         await self.session._start_sync()
@@ -53,10 +52,11 @@ class Room():
                 if not callback or entry['callback'] is callback:
                     self.session.listen_room_receipt.remove(entry)
 
-        await self.session._stop_sync()
+        await self.session._stop_sync()'''
 
     #endregion
 
+    #TODO rename to get_message()
     async def get_new_message(self):
         temp_queue = asyncio.Queue()
         await self.event_manager.add_customer("message", temp_queue)
@@ -78,7 +78,7 @@ class Room():
             except asyncio.CancelledError:
                 await self.event_manager.remove_customer("typing", temp_queue)
 
-    async def __sync_task(self):
+    '''async def __sync_task(self):
         # Remove old events (set since_token to now)
         resp_json = await self.api.sync()
         self.api.set_since_token(resp_json["next_batch"])
@@ -106,4 +106,4 @@ class Room():
                 for event in resp_json['rooms']['join'][self.room_id]['ephemeral']['events']:
                     # The 'and' part is added, because when one stops typing you receive an empty 'm.typing' event
                     if 'user_ids' in event['content'] and event['content']['user_ids']:
-                        self.typing_queue.put_nowait((self.room_id, event['content']['user_ids']))
+                        self.typing_queue.put_nowait((self.room_id, event['content']['user_ids']))'''

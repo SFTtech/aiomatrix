@@ -1,14 +1,16 @@
 import asyncio
 import logging
 
-from .api import client
 from aiomatrix.room import Room
+from aiomatrix.eventManager import EventManager
+from .api import client
 
-
-class Session():
+class Session:
     """Creates a personalized connection to a matrix server."""
     def __init__(self, username, password, base_url, device_id=None, log_level=20):
         self.api = client.lowlevel.AioMatrixApi(base_url)
+        #self.event_manager = EventManager(self.room_id, self.api)
+        self.event_manager = None
         self.url = base_url
         self.username = username
         self.password = password
@@ -46,25 +48,54 @@ class Session():
         """
         response = await self.api.room_join(room_alias_or_id)
         room_id = response['room_id']
-        room = Room(self, self.api, room_id,
+        self.event_manager = EventManager(room_id, self.api)
+        return Room(self, self.api, self.event_manager, room_id,
                     room_alias_or_id if room_id != room_alias_or_id else None)
-        return room
+
+    async def room_create(self, room_alias, name, invitees, public=False):
+        """
+        Ceate a room.
+        :param room_alias: Alias of the room.
+        :param name: Displayed name of the room.
+        :param invitees: List of invitees.
+        :param public: True means public, False means private, default private.
+        :return: Room: Instance of the Room class
+        """
+        response = await self.api.room_create(room_alias, name, invitees, public)
+        room_id = response['room_id']
+        room_alias = response['room_alias']
+        return Room(self, self.api, room_id, room_alias)
+
+    async def get_invite(self):
+        """
+        Yields room invite events whenever they occur.
+        :return: RoomID, Room Name, Sender
+        """
+        temp_queue = asyncio.Queue()
+        await self.event_manager.add_customer("invite", temp_queue)
+
+        while True:
+            try:
+                room_id, name, sender = await temp_queue.get()
+                yield room_id, name, sender
+            except asyncio.CancelledError:
+                await self.event_manager.remove_customer("invite", temp_queue)
 
 
     #region Sync Methods
 
-    async def _start_sync(self):
+    '''async def _start_sync(self):
         await self.__set_sync_flag(True)
 
         loop = asyncio.get_event_loop()
         loop.create_task(self.__sync_task())
 
         #TODO help, how to compare tasks?
-        '''if self.__sync_task() in asyncio.Task.all_tasks():
+        if self.__sync_task() in asyncio.Task.all_tasks():
             print('yo')
         print(asyncio.Task.all_tasks())'''
 
-    async def _stop_sync(self):
+    '''async def _stop_sync(self):
         await self.__set_sync_flag(False)
 
     async def __sync_task(self):
@@ -98,14 +129,14 @@ class Session():
                                 callback(room_id, event['content']['user_ids'])
 
             # TODO content mapping (?)
-            '''if self.listen_room_receipt:
+            if self.listen_room_receipt:
                 for entry in self.listen_room_receipt:
                     room_id = entry['room_id']
                     callback = entry['callback']
                     if room_id in resp_json['rooms']['join']:
                         print(resp_json)'''
 
-    async def __set_sync_flag(self, start):
+    '''async def __set_sync_flag(self, start):
         async with asyncio.Lock():
             if start:
                 self.sync_flag = True
@@ -126,7 +157,7 @@ class Session():
             ephemeral_filters.append('m.receipt')
         if self.listen_room_typing:
             ephemeral_filters.append('m.typing')
-        return timeline_filters, ephemeral_filters
+        return timeline_filters, ephemeral_filters'''
 
 
     #endregion
