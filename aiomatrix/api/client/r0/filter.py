@@ -4,18 +4,21 @@ class EventFilter:
     def __init__(self):
         self.timeline = []
         self.ephemeral = []
-
+        self.rooms = ['!GVWpWuMQbPmSIYkozP:in.tum.de'] #TODO set list of rooms
 
     def get_filter_dict(self):
         #TODO add invite to filter
-        event_filter = \
-            {"room":
-                {"timeline":
-                    {"types": self.timeline},
-                "ephemeral":
-                    {"types": self.ephemeral}
+        event_filter = {
+            "room": {
+                "rooms": self.rooms,
+                "timeline": {
+                    "types": self.timeline,
+                },
+                "ephemeral": {
+                    "types": self.ephemeral,
                 }
             }
+        }
         return event_filter
 
     def get_filter_string(self):

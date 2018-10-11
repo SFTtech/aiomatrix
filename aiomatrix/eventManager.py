@@ -75,19 +75,19 @@ class EventManager():
             #TODO parsing of response with filter class
             if self.room_id in resp_json['rooms']['join']:
                 for event in resp_json['rooms']['join'][self.room_id]['timeline']['events']:
-                    self.general_queue.put_nowait(("message", self.room_id, event['sender'], event['content']['body']))
+                    self.general_queue.put_nowait(({"message"}, self.room_id, event['sender'], event['content']['body']))
 
             if self.room_id in resp_json['rooms']['join']:
                 for event in resp_json['rooms']['join'][self.room_id]['ephemeral']['events']:
                     # The 'and' part is added, because when one stops typing you receive an empty 'm.typing' event
                     if 'user_ids' in event['content'] and event['content']['user_ids']:
-                        self.general_queue.put_nowait(("typing", self.room_id, event['content']['user_ids']))
+                        self.general_queue.put_nowait(({"typing"}, self.room_id, event['content']['user_ids']))
 
             if resp_json['rooms']['invite']:
                 for key in resp_json['rooms']['invite']:
                     for event in resp_json['rooms']['invite'][key]['invite_state']['events']:
                         if 'name' in event['content']:
-                            self.general_queue.put_nowait(("invite", key, event['content']['name'], event['sender']))
+                            self.general_queue.put_nowait(({"invite"}, key, event['content']['name'], event['sender']))
 
     async def __wait_general_event(self):
         while True:
