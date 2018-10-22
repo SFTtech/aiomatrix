@@ -4,7 +4,7 @@ import time
 
 
 async def readm(room):
-    async for message in room.get_new_message():
+    async for message in room.get_message():
         print(message)
 
 async def readt(room):

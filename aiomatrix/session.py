@@ -2,16 +2,15 @@ import asyncio
 import logging
 
 from aiomatrix.room import Room
-from aiomatrix.eventManager import EventManager
+from aiomatrix.eventmanager import EventManager
 from .api import client
+
 
 class Session:
     """Creates a personalized connection to a matrix server."""
     def __init__(self, username, password, base_url, device_id=None, log_level=20):
         self.api = client.lowlevel.AioMatrixApi(base_url)
-        #TODO remove room_id from eventManager constructor, either filter for room or room dependent queues
-        #self.event_manager = EventManager(self.room_id, self.api)
-        self.event_manager = None
+        self.event_manager = EventManager(self.api)
         self.url = base_url
         self.username = username
         self.password = password
@@ -46,7 +45,6 @@ class Session:
         """
         response = await self.api.room_join(room_alias_or_id)
         room_id = response['room_id']
-        self.event_manager = EventManager(room_id, self.api)
         return Room(self, self.api, self.event_manager, room_id,
                     room_alias_or_id if room_id != room_alias_or_id else None)
 
@@ -62,7 +60,7 @@ class Session:
         response = await self.api.room_create(room_alias, name, invitees, public)
         room_id = response['room_id']
         room_alias = response['room_alias']
-        return Room(self, self.api, room_id, room_alias)
+        return Room(self, self.api, self.event_manager, room_id, room_alias)
 
     async def get_invite(self):
         """
