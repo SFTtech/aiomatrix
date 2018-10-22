@@ -68,13 +68,13 @@ class Session:
         :return: RoomID, Room Name, Sender
         """
         temp_queue = asyncio.Queue()
-        await self.event_manager.add_customer("invite", temp_queue)
+        await self.event_manager.add_subscriber("invite", temp_queue)
 
         while True:
             try:
                 room_id, name, sender = await temp_queue.get()
                 yield room_id, name, sender
             except asyncio.CancelledError:
-                await self.event_manager.remove_customer("invite", temp_queue)
+                await self.event_manager.add_subscriber("invite", temp_queue)
 
     #endregion

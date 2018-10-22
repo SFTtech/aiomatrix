@@ -15,15 +15,14 @@ class EventFilter:
         Creates a filter/sync filter python dictionary.
         :return: Returns filter/sync filter python dictonary.
         """
-        #TODO add invite to filter (how?...)
+        #TODO add invite to filter (how?...) Not possible
+        #TODO test why, when room filter active, typing events dont work
         event_filter = {
             "room": {
                 "ephemeral": {
-                    "types": self.ephemeral,
+                    "types": self.ephemeral
                     "rooms": self.__get_unique_list(self.ephemeral_rooms)
-                }
-            },
-            "room": {
+                },
                 "timeline": {
                     "types": self.timeline,
                     "rooms": self.__get_unique_list(self.timeline_rooms)
@@ -73,7 +72,6 @@ class EventFilter:
             if not [entry for entry in self.ephemeral_rooms if entry[0] == "message"]:
                 self.ephemeral.remove("m.room.message")
 
-    #TODO not very pretty
     @staticmethod
     def __get_unique_list(rooms):
         """
@@ -82,7 +80,7 @@ class EventFilter:
         :param rooms: List of tuples: [(event,room_id1), (event,room_id1), (event,room_id2)..]
         :return: List of unique rooms [ room_id1, room_id2, ... ]
         """
-        return [i[1] for i in set(rooms)]
+        return list(set(room_id for event, room_id in rooms))
 
     def get_filtered_event(self, resp_json):
         """

@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from .api import client
 
@@ -12,7 +13,7 @@ class EventManager:
         self.rec_task = None
         self.general_queue = asyncio.Queue()
 
-        self.customer_list = {
+        self.subscriber_list = {
             'message': list(),
             'typing':list(),
             'invite':list()
@@ -33,45 +34,45 @@ class EventManager:
         self.rec_task = loop.create_task(self.__wait_general_event())
         self.sync_task = loop.create_task(self.__sync_task())
 
-    async def add_customer(self, event, queue, room_id=None):
+    async def add_subscriber(self, event, queue, room_id=None):
         """
-        Adds a customer event queue to the required/acepted events list.
+        Adds a subscriber event queue to the required/acepted events list.
         The filter class takes care of adjusting the sync filter and parsing the results.
         :param event: Event type, e.g. "message", "typing", "invite", ...
         :param queue: Queue the received event content is put in.
         :param room_id: Room Id, has to be passed for room specific events.
         """
-        self.customer_list[event].append((room_id, queue))
+        self.subscriber_list[event].append((room_id, queue))
         self.filter.set_filter(event, room_id)
 
-        if len(self.customer_list[event]) == 1:
+        if len(self.subscriber_list[event]) == 1:
             # restart queue, cause new event
             await self.__restart_tasks()
 
-    async def remove_customer(self, event, queue, room_id=None):
+    async def remove_subscriber(self, event, queue, room_id=None):
         """
-        Removes a customer event queue from the required/accepted events.
+        Removes a subscriber event queue from the required/accepted events.
         The filter class handles the correct adjustment of the sync filter.
         :param event: Event type, e.g. "message", "typing", "invite", ...
         :param queue: Queue the received event content is put in.
         :param room_id: Room Id, has to be passed for room specific events.
         """
-        self.customer_list[event].remove((room_id, queue))
+        self.subscriber_list[event].remove((room_id, queue))
         self.filter.remove_filter(event, room_id)
 
-        if not self.customer_list[event]:
+        if not self.subscriber_list[event]:
             # Restart queue, cause one type of event is no longer required
             await self.__restart_tasks()
 
             # Cancel tasks if all empty
-            for event_type in self.customer_list:
-                if self.customer_list[event_type]:
+            for event_type in self.subscriber_list:
+                if self.subscriber_list[event_type]:
                     return
             self.cancel()
 
     async def __sync_task(self):
         """
-        Calls the lowl evel sync method with a filter depending on the awaited events/queues.
+        Calls the lowlevel sync method with a filter depending on the awaited events/queues.
         Fills the general event queue with the parsed responses.
         """
         if not self.api.get_since_token():
@@ -96,21 +97,21 @@ class EventManager:
         while True:
             event = await self.general_queue.get()
             if "message" in event[0]:
-                for room, customer in self.customer_list['message']:
+                for room, subscriber in self.subscriber_list['message']:
                     if event[1] == room:
-                        # remove event type string and put in customers queues
-                        customer.put_nowait(event[1:])
+                        # remove event type string and put in subscribers queues
+                        subscriber.put_nowait(event[1:])
             elif "typing" in event[0]:
-                for room, customer in self.customer_list['typing']:
+                for room, subscriber in self.subscriber_list['typing']:
                     if event[1] == room:
-                        # remove event type string and put in customers queues
-                        customer.put_nowait(event[1:])
+                        # remove event type string and put in subscribers queues
+                        subscriber.put_nowait(event[1:])
             elif "invite" in event[0]:
-                for _room, customer in self.customer_list['invite']:
-                    # remove event type string and put in customers queues
-                    customer.put_nowait(event[1:])
+                for _room, subscriber in self.subscriber_list['invite']:
+                    # remove event type string and put in subscribers queues
+                    subscriber.put_nowait(event[1:])
             else:
-                print("unknown event received")
+                logging.warning("Unknown event received: %s", event[0])
 
     async def __restart_tasks(self):
         if self.sync_task:
