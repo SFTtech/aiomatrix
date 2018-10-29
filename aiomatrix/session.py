@@ -39,7 +39,7 @@ class Session:
     # region Room Methods
 
     async def room_join(self, room_alias_or_id):
-        """Joins a room.
+        """Joins a room. Also serves as an accept of an invite.
         :param room_alias_or_id: ID or alias of the room to join.
         :return Room: Instance of the Room class.
         """

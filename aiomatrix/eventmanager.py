@@ -15,8 +15,8 @@ class EventManager:
 
         self.subscriber_list = {
             'message': list(),
-            'typing':list(),
-            'invite':list()
+            'typing': list(),
+            'invite': list()
         }
 
     async def cancel(self):

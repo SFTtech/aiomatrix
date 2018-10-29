@@ -107,6 +107,32 @@ class AioMatrixApi:
 
     # region Room Specific functions
 
+    async def room_invite(self, room_id, member):
+        return await self.__send_request('POST', 'rooms/' + quote_plus(room_id) + '/invite',
+                                         json={'user_id': member})
+
+    async def room_leave(self, room_id):
+        """
+        Create parameters and URL to leave a given room.
+        :param room_id: ID of the room.
+        :return: Response in JSON format.
+        """
+        return await self.__send_request('POST', 'rooms/' + quote_plus(room_id) + '/leave')
+
+    async def room_get_members(self, room_id):
+        """
+        Create parameters and URL to retrieve all currently joined members of a given room.
+        :param room_id: ID of the room.
+        :return: List of user IDs (@example:matrix.org)
+        """
+        members = await self.__send_request('GET', 'rooms/' + quote_plus(room_id) + '/joined_members')
+
+        user_names = []
+        for user in members['joined']:
+            user_names.append(user)
+
+        return user_names
+
     async def room_send_message(self, room_id, message):
         """
         Create parameters and URL to send the given message to the reference room.
@@ -115,9 +141,51 @@ class AioMatrixApi:
         :return: Response in JSON format.
         """
         json = {'msgtype': 'm.text', 'body': message}
+        return await self._room_send_event(room_id, 'm.room.message', json)
+
+    async def room_set_topic(self, room_id, topic):
+        """
+        Create parameters and URL to set the topic of the referenced room.
+        :param room_id: ID of the room.
+        :param topic: Room topic.
+        :return: Response in JSON format.
+        """
+        json = {'topic': topic}
+        return await self._room_send_state_event(room_id, 'm.room.topic', json)
+
+    async def room_set_name(self, room_id, name):
+        """
+        Create parameters and URL to set the name of the referenced room.
+        :param room_id: ID of the room.
+        :param name: Room name.
+        :return: Response in JSON format.
+        """
+        json = {'name': name}
+
+        return await self._room_send_state_event(room_id, 'm.room.name', json)
+
+    async def _room_send_event(self, room_id, event, json):
+        """
+        Create parameters and URL to send the event to the referenced room.
+        :param room_id: ID of the room.
+        :param event: Event identifying sting.
+        :param json: JSON event parameters.
+        :return: Response in JSON format.
+        """
         return await self.__send_request('PUT', 'rooms/' + quote_plus(room_id) +
-                                         '/send/m.room.message/'
+                                         '/send/' + quote_plus(event) + '/'
                                          + str(self.__get_new_txn_id()), json)
+
+    async def _room_send_state_event(self, room_id, event, json):
+        """
+        Create parameters and URL to send the state event to the referenced room.
+        :param room_id: ID of the room.
+        :param event: Event identifying sting.
+        :param json: JSON event parameters.
+        :return: Response in JSON format.s
+        """
+        return await self.__send_request('PUT', 'rooms/' + quote_plus(room_id) +
+                                         '/state/' + quote_plus(event), json)
 
     # endregion
 

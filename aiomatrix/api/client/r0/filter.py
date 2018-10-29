@@ -20,7 +20,7 @@ class EventFilter:
         event_filter = {
             "room": {
                 "ephemeral": {
-                    "types": self.ephemeral
+                    "types": self.ephemeral,
                     "rooms": self.__get_unique_list(self.ephemeral_rooms)
                 },
                 "timeline": {
@@ -57,7 +57,7 @@ class EventFilter:
     def remove_filter(self, event, room_id):
         """
         Removes a filter event for a specific room. The given event
-        is no longer accpted and responses of this room are discarded.
+        is no longer accepted and responses of this room are discarded.
         :param event: Event type, e.g. "message", "typing", ...
         :param room_id: Room ID of accepted event origins.
         """
@@ -90,6 +90,7 @@ class EventFilter:
         :return: Tuple containing the relevant event-dependent information. "None" if the given
         JSON string does not consist of accepted information.
         """
+        print(resp_json)
         for room_id in self.__get_unique_list(self.timeline_rooms):
             if room_id in resp_json['rooms']['join']:
                 for event in resp_json['rooms']['join'][room_id]['timeline']['events']:
