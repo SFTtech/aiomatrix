@@ -50,19 +50,18 @@ async def main():
 
             await asyncio.sleep(5)
             await room.send_message("randomMsg1")
-            await room.set_name("random1")
-            await room.set_topic("topic1")
+            #await room.set_name("random1")
+            #await room.set_topic("topic1")
             #print(await room.get_members())
             #await r2.invite_user("@ebnera:in.tum.de")
-            '''await asyncio.sleep(5)
+            await asyncio.sleep(5)
             await room.send_message("randomMsg2")
             await asyncio.sleep(5)
             await room.send_message("randomMsg3")
             await asyncio.sleep(5)
 
-
             task.cancel()
-            '''
+
             while True:
                 await asyncio.sleep(20)
                 await room.send_message("randomMsg")

@@ -82,6 +82,7 @@ class EventManager:
 
         # Start waiting for new events
         while True:
+            print(self.filter.get_filter_string())
             resp_json = await self.api.sync(self.filter.get_filter_string())
             self.api.set_since_token(resp_json["next_batch"])
 

@@ -108,6 +108,12 @@ class AioMatrixApi:
     # region Room Specific functions
 
     async def room_invite(self, room_id, member):
+        """
+        Create parameters and URL to invite a user to a given room.
+        :param room_id: ID of the room.
+        :param member: User ID e.g. @example:matrix.org
+        :return: Response in JSON format.
+        """
         return await self.__send_request('POST', 'rooms/' + quote_plus(room_id) + '/invite',
                                          json={'user_id': member})
 
@@ -125,7 +131,8 @@ class AioMatrixApi:
         :param room_id: ID of the room.
         :return: List of user IDs (@example:matrix.org)
         """
-        members = await self.__send_request('GET', 'rooms/' + quote_plus(room_id) + '/joined_members')
+        members = await self.__send_request('GET', 'rooms/' + quote_plus(room_id) +
+                                            '/joined_members')
 
         user_names = []
         for user in members['joined']:
