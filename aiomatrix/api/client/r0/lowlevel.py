@@ -129,14 +129,15 @@ class AioMatrixApi:
         """
         Create parameters and URL to retrieve all currently joined members of a given room.
         :param room_id: ID of the room.
-        :return: List of user IDs (@example:matrix.org)
+        :return: List of tuples of user IDs and display_names (@example:matrix.org, Bob)
         """
         members = await self.__send_request('GET', 'rooms/' + quote_plus(room_id) +
                                             '/joined_members')
 
         user_names = []
+        print(members)
         for user in members['joined']:
-            user_names.append(user)
+            user_names.append((user,members['joined'][user]['display_name']))
 
         return user_names
 

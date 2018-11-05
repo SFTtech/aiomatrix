@@ -5,9 +5,9 @@ class EventFilter:
     """Low level class. Takes care of creating the filter for event requests/sync.
     Can be used to parse and check the response JSON."""
     def __init__(self):
-        self.timeline = []
+        self.timeline_types = []
         self.timeline_rooms = []
-        self.ephemeral = []
+        self.ephemeral_types = []
         self.ephemeral_rooms = []
 
     def get_filter_dict(self):
@@ -20,11 +20,11 @@ class EventFilter:
         event_filter = {
             "room": {
                 "ephemeral": {
-                    "types": self.ephemeral
-                    #"rooms": self.__get_unique_list(self.ephemeral_rooms)
+                    "types": self.ephemeral_types,
+                    "rooms": self.__get_unique_list(self.ephemeral_rooms)
                 },
                 "timeline": {
-                    "types": self.timeline,
+                    "types": self.timeline_types,
                     "rooms": self.__get_unique_list(self.timeline_rooms)
                 }
             }
@@ -48,12 +48,12 @@ class EventFilter:
         """
         if event == "message":
             self.timeline_rooms.append((event, room_id))
-            if "m.room.message" not in self.timeline:
-                self.timeline.append("m.room.message")
+            if "m.room.message" not in self.timeline_types:
+                self.timeline_types.append("m.room.message")
         if event == "typing":
             self.ephemeral_rooms.append((event, room_id))
-            if "m.typing" not in self.ephemeral:
-                self.ephemeral.append("m.typing")
+            if "m.typing" not in self.ephemeral_types:
+                self.ephemeral_types.append("m.typing")
 
     def remove_filter(self, event, room_id):
         """
@@ -66,12 +66,12 @@ class EventFilter:
             self.timeline_rooms.remove((event, room_id))
             # Check if other rooms still require the given event, otherwise remove entry
             if not [entry for entry in self.timeline_rooms if entry[0] == "message"]:
-                self.timeline.remove("m.room.message")
+                self.timeline_types.remove("m.room.message")
         if event == "typing":
             self.ephemeral_rooms.remove((event, room_id))
             # Check if other rooms still require the given event, otherwise remove entry
             if not [entry for entry in self.ephemeral_rooms if entry[0] == "message"]:
-                self.ephemeral.remove("m.room.message")
+                self.ephemeral_types.remove("m.room.message")
 
     @staticmethod
     def __get_unique_list(rooms):

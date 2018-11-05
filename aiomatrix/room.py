@@ -47,7 +47,7 @@ class Room:
     async def get_members(self):
         """
         Returns a list of room members as user IDs (@example:matrix.org)
-        :return: List of room members.
+        :return: List of tuples of user IDs and display_names (@example:matrix.org, Bob)
         """
         return await self.api.room_get_members(self.room_id)
 
