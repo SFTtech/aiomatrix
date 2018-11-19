@@ -135,7 +135,6 @@ class AioMatrixApi:
                                             '/joined_members')
 
         user_names = []
-        print(members)
         for user in members['joined']:
             user_names.append((user,members['joined'][user]['display_name']))
 

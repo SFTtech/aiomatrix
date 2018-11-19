@@ -45,8 +45,9 @@ class EventManager:
         self.subscriber_list[event].append((room_id, queue))
         self.filter.set_filter(event, room_id)
 
-        #TODO: when new room -> restart
-        if len(self.subscriber_list[event]) == 1:
+        # if either new event or new room
+        if len(self.subscriber_list[event]) == 1 or \
+                list(room_id for room_id, queue in self.subscriber_list[event]).count(room_id) == 1:
             # restart queue, cause new event
             await self.__restart_tasks()
 
@@ -61,7 +62,9 @@ class EventManager:
         self.subscriber_list[event].remove((room_id, queue))
         self.filter.remove_filter(event, room_id)
 
-        if not self.subscriber_list[event]:
+        # if either nobody subscribed to this event, or the room_id doesn't exist anymorelllllllll
+        if not self.subscriber_list[event] or \
+                list(room_id for room_id, queue in self.subscriber_list[event]).count(room_id) == 0:
             # Restart queue, cause one type of event is no longer required
             await self.__restart_tasks()
 
