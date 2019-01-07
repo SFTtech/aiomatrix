@@ -62,7 +62,7 @@ class EventManager:
         self.subscriber_list[event].remove((room_id, queue))
         self.filter.remove_filter(event, room_id)
 
-        # if either nobody subscribed to this event, or the room_id doesn't exist anymorelllllllll
+        # if either nobody subscribed to this event, or the room_id doesn't exist anymore
         if not self.subscriber_list[event] or \
                 list(room_id for room_id, queue in self.subscriber_list[event]).count(room_id) == 0:
             # Restart queue, cause one type of event is no longer required

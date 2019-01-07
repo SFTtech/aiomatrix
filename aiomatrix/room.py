@@ -79,3 +79,10 @@ class Room:
                 yield room_id, sender
             except asyncio.CancelledError:
                 await self.event_manager.remove_subscriber("typing", temp_queue, room_id)
+
+    # region Encryption
+
+    async def testEnc(self):
+        await self.api.encrypt_room(self.room_id)
+
+    # endregion

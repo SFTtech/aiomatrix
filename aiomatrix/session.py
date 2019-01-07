@@ -32,6 +32,7 @@ class Session:
                                       user=self.username,
                                       password=self.password,
                                       device_id=self.device_id)
+        print(resp)
         self.access_token = resp['access_token']
         self.api.set_access_token(self.access_token)
         logging.info("Successfully connected user \"%s\".", self.username)
@@ -77,4 +78,18 @@ class Session:
             except asyncio.CancelledError:
                 await self.event_manager.add_subscriber("invite", temp_queue)
 
-    #endregion
+    # endregion
+
+    # region Encryption
+
+    async def testEnc(self):
+        #print(await self.api.keys_query("@fuhhbarmatrixtest:matrix.org"))
+        #await self.api.delete_device('DWTYLSQHPH')
+        #print(await self.api.keys_query("@fuhhbarmatrixtest:matrix.org"))
+        #print(await self.api.keys_query("@fuhhbarmatrixtest:matrix.org"))
+        #print(await self.api.keys_claim())
+        print(await self.api.setup_olm())
+        #print(await self.api.keys_query())
+        #print(await self.api.keys_claim())
+
+    # endregion
