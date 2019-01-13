@@ -255,12 +255,15 @@ class AioMatrixApi:
 
     async def setup_olm(self):
         #acc = olm.Account()
-        user = "@ebnera:in.tum.de"
+        #user = "@ebnera:in.tum.de"
+        user = "@jelten:in.tum.de"
         self_name = "@fuhhbarmatrixtest:matrix.org"
-        user_device_id = 'CXDAKIMTTW'
+        #user_device_id = 'CXDAKIMTTW'
+        user_device_id = 'IXKOMSTUNZ'
         self_device_id = 'HWWBTMCIEJ'
         #room_id ="!MpCIOBEslysgPwuCyx:in.tum.de"
-        room_id = "!MbCSOfWuHCOEQGTWTf:in.tum.de"
+        #room_id = "!MbCSOfWuHCOEQGTWTf:in.tum.de"
+        room_id = "!KhBqCWMQcSJMeRLbrB:in.tum.de"
 
         ###################################### Own account
 
@@ -281,14 +284,18 @@ class AioMatrixApi:
         print(await self.keys_claim(self_name, self_device_id))
 
         #await self.keys_upload(acc)
-        await self.otk_upload(acc)
+        self_otk = await self.otk_upload(acc)
 
         ############################### Identity Keys
 
         #print(await self.keys_query("@fuhhbarmatrixtest:matrix.org"))
 
         kquery = await self.keys_query(user)
+        print(kquery)
+
         device_id = list(kquery['device_keys'][user].keys())[0]
+        # TODO: get correct device id and json keys for user
+        device_id = user_device_id
         #Order is not imporant due to sorting in canonical json
         keys_json = {
             'keys': {'curve25519:CXDAKIMTTW': 'yfT2QmHvCChEFNtyp8gBP0InXTJVIjj21eBb6aukOTc', 'ed25519:CXDAKIMTTW': 'i9LiWOZ+DdEj6ly0xu39Kmrl0SN8MYfkNdW2QBLR2bw'},
@@ -304,7 +311,7 @@ class AioMatrixApi:
         print(dev_key_id, dev_key_sign, signature)
         keys_json = AioMatrixApi.canonical_json(keys_json)
 
-        olm.ed25519_verify(dev_key_sign, keys_json, signature)
+        #olm.ed25519_verify(dev_key_sign, keys_json, signature)
 
         ############################ One-Time Key
 
@@ -320,11 +327,24 @@ class AioMatrixApi:
         ####################### Olm Session
 
         ses = olm.OutboundSession(acc, dev_key_id, otk)
-        initial_message = ses.encrypt("secret")
+
+        payload_json = {
+            "sender": self_name,
+            "sender_device": self_device_id,
+            "keys": {
+                "ed25519": self_otk
+            },
+            "recipient": user,
+            "recipient_keys": {
+                "ed25519": dev_key_sign
+            }
+        }
+
+        initial_message = ses.encrypt(json.dumps(payload_json))
 
         # create olm m.encrypted
         await self.send_olm_pr_msg(user, user_device_id, dev_key_id, acc.identity_keys["curve25519"], initial_message.ciphertext)
-        await asyncio.sleep(30)
+        #await asyncio.sleep(10)
         ######################## MegOlm Session
 
         megses = olm.OutboundGroupSession()
@@ -333,14 +353,21 @@ class AioMatrixApi:
 
         room_key_event = {
             "content": {
-            "algorithm": "m.megolm.v1.aes-sha2",
-            "room_id": room_id,
-            "session_id": megses.id,
-            "session_key": ses_key
+                "algorithm": "m.megolm.v1.aes-sha2",
+                "room_id": room_id,
+                "session_id": ses.id,
+                "session_key": ses_key
             },
-            "type": "m.room_key"
+            "type": "m.room_key",
+            "keys": {
+                "ed25519": self_otk
+            },
+            "recipient": user,
+            "sender": self_name,
+            "recipient_keys": {
+                "ed25519": dev_key_sign
+            }
         }
-
         room_key_enc = ses.encrypt(json.dumps(room_key_event))
 
         await self.send_megolm_pr_msg(user, user_device_id, room_key_enc.ciphertext, ses.id, acc.identity_keys["curve25519"], dev_key_id)
@@ -417,7 +444,8 @@ class AioMatrixApi:
                                 "type": 1
                             }
                         },
-                        "sender_key": sen_dev_key
+                        "sender_key": sen_dev_key,
+                        "session_id": ses_id
                     },
                     "type": "m.room.encrypted"
                 }
@@ -514,6 +542,7 @@ class AioMatrixApi:
 
         print("JSON: ", json_para)
         await self.__send_request('POST', "keys/upload", json_para)
+        return one_time_key_value
 
     '''
     PUT /_matrix/client/r0/sendToDevice/{eventType}/{txnId} m.room.encrypted event
