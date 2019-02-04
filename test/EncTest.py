@@ -3,14 +3,11 @@ import asyncio
 
 
 async def main():
-    async with Session("fuhhbarmatrixtest", "monkey", "https://matrix.org", "HWWBTMCIEJ") as ses:
-    #async with Session("fuhhbarmatrixtest", "monkey", "https://matrix.org", "DWTYLSQHPH") as ses:
+    async with Session("fuhhbarmatrixtest", "monkey", "https://matrix.org", "HWWBTMCIEJ", log_level=10) as ses:
 
         await ses.connect()
 
-        #room = await ses.room_join("!MbCSOfWuHCOEQGTWTf:in.tum.de")
-        room = await ses.room_join("!KhBqCWMQcSJMeRLbrB:in.tum.de")
-        print(room.room_id)
+        room = await ses.room_join("!RThAGWptqQbhWfJmzs:in.tum.de")
 
 
         #await room.send_message("encTestMessage")
@@ -18,7 +15,6 @@ async def main():
         #await room.testEnc()
 
         await ses.testEnc()
-
 
 
 loop = asyncio.get_event_loop()

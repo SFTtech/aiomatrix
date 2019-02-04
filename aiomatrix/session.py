@@ -9,6 +9,14 @@ from .api import client
 class Session:
     """Creates a personalized connection to a matrix server."""
     def __init__(self, username, password, base_url, device_id=None, log_level=20):
+        """
+        Initializes a new session.
+        :param username: Username, e.g. "test"
+        :param password: Password for the given user.
+        :param base_url: Url for the server e.g. "https://matrix.org"
+        :param device_id: Id of the device you're logging onto. Important: For encryption the device name has to be specified!
+        :param log_level: Level of the logging printouts: (Default)INFO = 20, DEBUG = 10
+        """
         self.api = client.lowlevel.AioMatrixApi(base_url)
         self.event_manager = EventManager(self.api)
         self.url = base_url
@@ -32,7 +40,6 @@ class Session:
                                       user=self.username,
                                       password=self.password,
                                       device_id=self.device_id)
-        print(resp)
         self.access_token = resp['access_token']
         self.api.set_access_token(self.access_token)
         logging.info("Successfully connected user \"%s\".", self.username)
@@ -83,13 +90,6 @@ class Session:
     # region Encryption
 
     async def testEnc(self):
-        #print(await self.api.keys_query("@fuhhbarmatrixtest:matrix.org"))
-        #await self.api.delete_device('DWTYLSQHPH')
-        #print(await self.api.keys_query("@fuhhbarmatrixtest:matrix.org"))
-        #print(await self.api.keys_query("@fuhhbarmatrixtest:matrix.org"))
-        #print(await self.api.keys_claim())
-        print(await self.api.setup_olm())
-        #print(await self.api.keys_query())
-        #print(await self.api.keys_claim())
+        await self.api.setup_olm()
 
     # endregion
