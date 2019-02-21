@@ -12,9 +12,7 @@ async def main():
 
         #await room.send_message("encTestMessage")
 
-        #await room.testEnc()
-
-        await ses.testEnc()
+        await room.activate_encryption()
 
 
 loop = asyncio.get_event_loop()

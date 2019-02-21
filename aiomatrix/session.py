@@ -89,7 +89,7 @@ class Session:
 
     # region Encryption
 
-    async def testEnc(self):
-        await self.api.setup_olm()
+    #async def testEnc(self):
+    #    await self.api.setup_olm()
 
     # endregion
