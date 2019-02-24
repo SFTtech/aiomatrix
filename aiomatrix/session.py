@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import olm
 
 from aiomatrix.room import Room
 from aiomatrix.eventmanager import EventManager
@@ -23,7 +24,11 @@ class Session:
         self.username = username
         self.password = password
         self.device_id = device_id
+        self.user_id = None
         self.access_token = None
+
+        self.olm_account = None
+        self.device_key = None
 
         logging.basicConfig(format='[%(levelname)s] %(message)s', level=log_level)
 
@@ -40,9 +45,26 @@ class Session:
                                       user=self.username,
                                       password=self.password,
                                       device_id=self.device_id)
+        self.user_id = resp['user_id']
         self.access_token = resp['access_token']
         self.api.set_access_token(self.access_token)
+
+        # load olm account for this user
+        self.olm_account = self.__create_or_load_olm_account(self.password)
+
         logging.info("Successfully connected user \"%s\".", self.username)
+
+    def get_user_id(self):
+        return self.user_id
+
+    def get_device_id(self):
+        return self.device_id
+
+    def get_olm_account(self):
+        return self.olm_account
+
+    def get_device_key(self):
+        return self.device_key
 
     # region Room Methods
 
@@ -89,7 +111,28 @@ class Session:
 
     # region Encryption
 
-    #async def testEnc(self):
-    #    await self.api.setup_olm()
+    def __create_or_load_olm_account(self, password):
+
+        #TODO if file does not exist: create and keys_upload, otherwise load
+        # use users password instead of fixed string
+
+        # save acc and only load if not saved before to make sure to use the same keys every time
+        pick_path = '/home/andi/devel/matrix/tmp/kartoffel'
+
+        '''acc = olm.Account()
+        p = acc.pickle("kartoffel")
+        f = open(pick_path, 'wb+')
+        f.write(p)
+        f.close()'''
+
+        with open(pick_path, 'rb') as f:
+            pick = f.read()
+            acc = olm.Account.from_pickle(pick, "kartoffel")
+
+        self.device_key = acc.identity_keys["curve25519"]
+
+        # await self.keys_upload(acc, self_name, self_device_id)
+
+        return acc
 
     # endregion

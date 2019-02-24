@@ -157,7 +157,6 @@ class AioMatrixApi:
         """
         members = await self.__send_request('GET', 'rooms/' + quote_plus(room_id) +
                                             '/joined_members')
-
         user_names = []
         for user in members['joined']:
             user_names.append((user,members['joined'][user]['display_name']))
@@ -222,26 +221,67 @@ class AioMatrixApi:
 
     # region Encryption
 
-    async def keys_query(self, account):
+    async def keys_query(self, acc_user_id, acc_device_id):
         json_para = {
             "timeout": 10000,
             "device_keys": {
-                account: []
+                acc_user_id: []
             },
             "token": "string"
         }
-        return await self.__send_request('POST', 'keys/query', json_para)
+        resp_json = await self.__send_request('POST', 'keys/query', json_para)
 
-    async def keys_claim(self, account, device_id):
+        # Verify the correctness of the keys
+        if acc_device_id in list(resp_json['device_keys'][acc_user_id].keys()):
+            device_id = acc_device_id
+        else:
+            raise AiomatrixError("Unknown device " + acc_device_id + ". Cannot query required device keys.")
+
+        # Parse keys
+        dev_key_id = resp_json['device_keys'][acc_user_id][device_id]['keys']['curve25519:' + device_id]
+        dev_key_sign = resp_json['device_keys'][acc_user_id][device_id]['keys']['ed25519:' + device_id]
+        signature = resp_json['device_keys'][acc_user_id][device_id]['signatures'][acc_user_id][
+            'ed25519:' + device_id]
+
+        logging.debug("Identity keys info for \"%s\": \"%s\" \"%s\" \"%s\"", device_id, dev_key_id, dev_key_sign,
+                      signature)
+
+        keys_json = resp_json['device_keys'][acc_user_id][device_id]
+        del keys_json['signatures']
+        del keys_json['unsigned']
+
+        olm.ed25519_verify(dev_key_sign, AioMatrixApi.canonical_json(keys_json), signature)
+
+        return dev_key_id, dev_key_sign
+
+    async def keys_claim(self, acc_user_id, acc_device_id, acc_sign_key):
         json_para = {
           "timeout": 10000,
           "one_time_keys": {
-            account: {
-              device_id: "signed_curve25519"
+            acc_user_id: {
+              acc_device_id: "signed_curve25519"
             }
           }
         }
-        return await self.__send_request('POST', 'keys/claim', json_para)
+        resp_json = await self.__send_request('POST', 'keys/claim', json_para)
+
+        # No one-time-keys exist
+        if not resp_json['one_time_keys']:
+            return None
+
+        key_description = list(resp_json['one_time_keys'][acc_user_id][acc_device_id].keys())[0]
+        otk = resp_json['one_time_keys'][acc_user_id][acc_device_id][key_description]['key']
+        otk_signature = \
+            resp_json['one_time_keys'][acc_user_id][acc_device_id][key_description]['signatures'][acc_user_id][
+                'ed25519:' + acc_device_id]
+
+        logging.debug("OTK key info for \"%s\": \"%s\" \"%s\"", acc_device_id, otk, otk_signature)
+
+        otk_json = {'key': otk}
+
+        olm.ed25519_verify(acc_sign_key, AioMatrixApi.canonical_json(otk_json), otk_signature)
+
+        return otk
 
     async def encrypt_room(self, room_id):
         json_para = {

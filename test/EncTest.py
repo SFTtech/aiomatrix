@@ -9,11 +9,9 @@ async def main():
 
         room = await ses.room_join("!RThAGWptqQbhWfJmzs:in.tum.de")
 
-
-        #await room.send_message("encTestMessage")
-
         await room.activate_encryption()
 
+        await room.send_message("lol oh")
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(main())

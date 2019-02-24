@@ -3,10 +3,6 @@ import olm
 import logging
 
 
-from .api import client
-from aiomatrix.errors import AiomatrixError
-
-
 class Room:
     """Instance of a matrix room"""
     def __init__(self, session, api, event_manager, room_id, room_alias=None):
@@ -15,6 +11,15 @@ class Room:
         self.room_id = room_id
         self.room_alias = room_alias
         self.event_manager = event_manager
+        self.user_id = self.session.get_user_id()
+        self.device_id = self.session.get_device_id()
+
+        # Encryption parameters
+        self.is_encrypted = False
+        self.device_key = self.session.get_device_key()
+        self.olm_account = self.session.get_olm_account()
+        self.meg_ses = None  #TODO pickle megolm session
+        self.room_keys = list()  # Tuples of (user_id, device_id, megolm session key)
 
     async def invite_user(self, user_id):
         """
@@ -34,8 +39,11 @@ class Room:
         Sends a message to the room.
         :param message: Message string
         """
-        #TODO if encryption activated use self.api.send_enc()
-        await self.api.room_send_message(self.room_id, message)
+        #TODO update function description
+        if self.is_encrypted:
+            await self.api.send_enc(self.room_id, self.device_id, self.device_key, self.meg_ses, message)
+        else:
+            await self.api.room_send_message(self.room_id, message)
 
     async def set_name(self, name):
         """
@@ -91,100 +99,57 @@ class Room:
 
     async def activate_encryption(self):
         #TODO uncomment later
+        # Send event to activate encryption of this room
         #await self.api.encrypt_room(self.room_id)
-        #TODO get members of room, for loop over members, save megsessions in a list
-        await self.__create_room_encryption()
 
-    async def __create_room_encryption(self):
-        partner_user_id = "@ebnera:in.tum.de"
-        self_user_id = "@fuhhbarmatrixtest:matrix.org"
-        partner_device_id = 'YPWKTLRKZG'
-        self_device_id = 'HWWBTMCIEJ'
-        room_id = "!RThAGWptqQbhWfJmzs:in.tum.de"
+        # Generate MegOlm keys for this device and for this room
+        self.meg_ses = olm.OutboundGroupSession()
 
-        ###################################### Own account
+        # Loop over all members in this room:
+        # - get their keys
+        # - create olm session
+        # - use olm to pass this room's megolm session info (stored in self.meg_ses)
+        room_members = await self.get_members()
+        for user_id, _ in room_members:
+            # Exclude own user
+            if user_id != self.session.get_user_id():
+                #TODO How to get user's device ID he joined the room with?
+                device_id = 'YPWKTLRKZG'
+                self.room_keys.append((user_id, device_id, None))
+                await self.__create_room_encryption(user_id, device_id)
 
-        # save acc and only load if not saved before to make sure to use the same keys every time
-        pick_path = '/home/andi/devel/matrix/tmp/kartoffel'
+    async def __create_room_encryption(self, partner_user_id, partner_device_id):
+        self_user_id = self.session.get_user_id()
+        self_device_id = self.session.get_device_id()
 
-        '''acc = olm.Account()
-        p = acc.pickle("kartoffel")
-        f = open(pick_path, 'wb+')
-        f.write(p)
-        f.close()'''
-
-        with open(pick_path, 'rb') as f:
-            pick = f.read()
-            acc = olm.Account.from_pickle(pick, "kartoffel")
-
-        self_device_key = acc.identity_keys["curve25519"]
+        # Generate and upload new One Time Keys
 
         # You can only upload new keys when the old are read (?!)
-        # TODO: wtf? why
-        print(await self.api.keys_query(self_user_id))
-        print(await self.api.keys_claim(self_user_id, self_device_id))
+        # TODO: wtf? why..
+        _, sign = await self.api.keys_query(self_user_id, self_device_id)
+        await self.api.keys_claim(self_user_id, self_device_id, sign)
 
-        # await self.keys_upload(acc, self_name, self_device_id)
-        self_otk = await self.api.otk_upload(acc, self_user_id, self_device_id)
+        self_otk = await self.api.otk_upload(self.olm_account, self_user_id, self_device_id)
 
-        ############################### Partner Identity Keys
+        # Get partner Identity Keys
 
-        kquery = await self.api.keys_query(partner_user_id)
+        partner_dev_key_id, partner_dev_key_sign = await self.api.keys_query(partner_user_id, partner_device_id)
 
-        if partner_device_id in list(kquery['device_keys'][partner_user_id].keys()):
-            device_id = partner_device_id
-        else:
-            raise AiomatrixError("Unknown device " + partner_device_id + ". Cannot query required device keys.")
+        # Get partner One-Time Key
 
-        dev_key_id = kquery['device_keys'][partner_user_id][device_id]['keys']['curve25519:' + device_id]
-        dev_key_sign = kquery['device_keys'][partner_user_id][device_id]['keys']['ed25519:' + device_id]
-        signature = kquery['device_keys'][partner_user_id][device_id]['signatures'][partner_user_id][
-            'ed25519:' + device_id]
+        partner_otk = await self.api.keys_claim(partner_user_id, partner_device_id, partner_dev_key_sign)
 
-        logging.debug("Identity keys info for \"%s\": \"%s\" \"%s\" \"%s\"", device_id, dev_key_id, dev_key_sign,
-                      signature)
+        # Olm Session
+        ses = olm.OutboundSession(self.olm_account, partner_dev_key_id, partner_otk)
 
-        keys_json = kquery['device_keys'][partner_user_id][device_id]
-        del keys_json['signatures']
-        del keys_json['unsigned']
+        await self.api.send_olm_pr_msg(partner_user_id, partner_device_id, partner_dev_key_id, partner_dev_key_sign,
+                                       self_user_id, self_device_id, self.device_key, self_otk, ses)
 
-        olm.ed25519_verify(dev_key_sign, client.lowlevel.AioMatrixApi.canonical_json(keys_json), signature)
+        # MegOlm Session
+        await self.api.send_megolm_pr_msg(self.room_id, partner_user_id, self.device_key, self_user_id, self_otk,
+                                          partner_device_id, partner_dev_key_sign, partner_dev_key_id, ses, self.meg_ses)
 
-        ############################ Partner One-Time Key
-
-        kclaim = await self.api.keys_claim(partner_user_id, device_id)
-
-        key_description = list(kclaim['one_time_keys'][partner_user_id][partner_device_id].keys())[0]
-        otk = kclaim['one_time_keys'][partner_user_id][partner_device_id][key_description]['key']
-        otk_signature = \
-        kclaim['one_time_keys'][partner_user_id][partner_device_id][key_description]['signatures'][partner_user_id][
-            'ed25519:' + partner_device_id]
-
-        logging.debug("OTK key info for \"%s\": \"%s\" \"%s\"", device_id, otk, otk_signature)
-
-        otk_json = {'key': otk}
-
-        olm.ed25519_verify(dev_key_sign, client.lowlevel.AioMatrixApi.canonical_json(otk_json), otk_signature)
-
-        ####################### Olm Session
-
-        ses = olm.OutboundSession(acc, dev_key_id, otk)
-
-        # create olm m.encrypted
-        await self.api.send_olm_pr_msg(partner_user_id, partner_device_id, dev_key_id, dev_key_sign, self_user_id,
-                                   self_device_id, self_device_key, self_otk, ses)
-
-        ######################## MegOlm Session
-
-        megses = olm.OutboundGroupSession()
-
-        await self.api.send_megolm_pr_msg(room_id, partner_user_id, self_device_key, self_user_id, self_otk,
-                                      partner_device_id, dev_key_sign, dev_key_id, ses, megses)
-
-        ######################## Send encrypted to room
-
-        msg = "oh hahaha"
-
-        await self.api.send_enc(room_id, self_device_id, self_device_key, megses, msg)
+        # Set this room to encrypted, forces messages to be sent encrypted
+        self.is_encrypted = True
 
     # endregion
