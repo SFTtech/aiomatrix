@@ -1,9 +1,11 @@
 import asyncio
 import logging
 import olm
+import os
 
 from aiomatrix.room import Room
 from aiomatrix.eventmanager import EventManager
+from aiomatrix.errors import AiomatrixError
 from .api import client
 
 
@@ -29,6 +31,7 @@ class Session:
 
         self.olm_account = None
         self.device_key = None
+        self.sign_key = None
 
         logging.basicConfig(format='[%(levelname)s] %(message)s', level=log_level)
 
@@ -46,11 +49,16 @@ class Session:
                                       password=self.password,
                                       device_id=self.device_id)
         self.user_id = resp['user_id']
+        # If no explicit device ID is used during session setup/connection the randomly generated device ID of the
+        # server is set for further usage (e.g. encryption)
+        if not self.device_id:
+            logging.warning("No explicit device ID given during session setup, will use the server generated new device ID: \"%s\"", self.device_id)
+            self.device_id = resp['device_id']
         self.access_token = resp['access_token']
         self.api.set_access_token(self.access_token)
 
         # load olm account for this user
-        self.olm_account = self.__create_or_load_olm_account(self.password)
+        self.olm_account = await self.__create_or_load_olm_account(self.password)
 
         logging.info("Successfully connected user \"%s\".", self.username)
 
@@ -65,6 +73,9 @@ class Session:
 
     def get_device_key(self):
         return self.device_key
+
+    def get_sign_key(self):
+        return self.sign_key
 
     # region Room Methods
 
@@ -111,27 +122,43 @@ class Session:
 
     # region Encryption
 
-    def __create_or_load_olm_account(self, password):
-
-        #TODO if file does not exist: create and keys_upload, otherwise load
-        # use users password instead of fixed string
+    async def __create_or_load_olm_account(self, password):
 
         # save acc and only load if not saved before to make sure to use the same keys every time
-        pick_path = '/home/andi/devel/matrix/tmp/kartoffel'
+        pick_path = '/home/andi/devel/matrix/tmp/' + self.username + self.device_id
 
-        '''acc = olm.Account()
-        p = acc.pickle("kartoffel")
-        f = open(pick_path, 'wb+')
-        f.write(p)
-        f.close()'''
+        # an account with corresponding keys has not been pickled for this user + device combo
+        if not os.path.exists(pick_path):
+            acc = olm.Account()
+            p = acc.pickle(password)
+            f = open(pick_path, 'wb+')
+            f.write(p)
+            f.close()
 
-        with open(pick_path, 'rb') as f:
-            pick = f.read()
-            acc = olm.Account.from_pickle(pick, "kartoffel")
+            # Upload new keys to the server
+            await self.api.device_keys_upload(acc, self.user_id, self.device_id)
+        else:
+            with open(pick_path, 'rb') as f:
+                pick = f.read()
+                acc = olm.Account.from_pickle(pick, password)
 
+        # We also need control over all one-time-keys, they are somehow not pickled
+        # Therefore: Read all existing one-time-keys and upload new ones
+        # Not verifying, because if we upload new device keys we don't have the old one to verify it
+        # and we simply don't care if they were correct, we only throw them away
+
+        while True:
+            resp_json = await self.api.keys_claim(self.user_id, self.device_id)
+            if not resp_json['one_time_keys']:
+                break
+
+        await self.api.otk_upload(acc, self.user_id, self.device_id)
+
+        # Set local device public key, used and required for encrypting messages
         self.device_key = acc.identity_keys["curve25519"]
+        self.sign_key = acc.identity_keys["ed25519"]
 
-        # await self.keys_upload(acc, self_name, self_device_id)
+        logging.debug("Device identity/sign key info for \"%s\": \"%s\" \"%s\"", self.device_id, acc.identity_keys["curve25519"], acc.identity_keys["ed25519"])
 
         return acc
 

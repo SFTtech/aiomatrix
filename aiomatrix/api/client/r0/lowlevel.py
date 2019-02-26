@@ -220,8 +220,12 @@ class AioMatrixApi:
     # endregion
 
     # region Encryption
+    async def get_user_device_ids(self, acc_user_id):
+        resp_json = await self.keys_query(acc_user_id)
 
-    async def keys_query(self, acc_user_id, acc_device_id):
+        return list(resp_json['device_keys'][acc_user_id].keys())
+
+    async def keys_query(self, acc_user_id):
         json_para = {
             "timeout": 10000,
             "device_keys": {
@@ -229,7 +233,11 @@ class AioMatrixApi:
             },
             "token": "string"
         }
-        resp_json = await self.__send_request('POST', 'keys/query', json_para)
+        return await self.__send_request('POST', 'keys/query', json_para)
+
+    async def keys_query_and_verify(self, acc_user_id, acc_device_id):
+        # querys all keys and verifies the ones for the given device, returns id/sign key
+        resp_json = await self.keys_query(acc_user_id)
 
         # Verify the correctness of the keys
         if acc_device_id in list(resp_json['device_keys'][acc_user_id].keys()):
@@ -254,7 +262,8 @@ class AioMatrixApi:
 
         return dev_key_id, dev_key_sign
 
-    async def keys_claim(self, acc_user_id, acc_device_id, acc_sign_key):
+    async def keys_claim(self, acc_user_id, acc_device_id):
+        # Only claims ONE one-time-key!
         json_para = {
           "timeout": 10000,
           "one_time_keys": {
@@ -263,10 +272,14 @@ class AioMatrixApi:
             }
           }
         }
-        resp_json = await self.__send_request('POST', 'keys/claim', json_para)
+        return await self.__send_request('POST', 'keys/claim', json_para)
+
+    async def keys_claim_and_verify(self, acc_user_id, acc_device_id, acc_sign_key):
+        resp_json = await self.keys_claim(acc_user_id, acc_device_id)
 
         # No one-time-keys exist
         if not resp_json['one_time_keys']:
+            logging.warning("No one-time-key exists for: \"%s\" \"%s\"", acc_user_id, acc_device_id)
             return None
 
         key_description = list(resp_json['one_time_keys'][acc_user_id][acc_device_id].keys())[0]
@@ -355,7 +368,7 @@ class AioMatrixApi:
                         "ciphertext": {
                             rec_dev_key: {
                                 "body": room_key_enc.ciphertext,
-                                "type": 0
+                                "type": 0  # Important, is a olm pre key message even though it is encrypted with olm
                             }
                         },
                         "sender_key": sen_dev_key,
@@ -392,15 +405,10 @@ class AioMatrixApi:
 
         return await self.__send_request('PUT', 'rooms/' + quote_plus(room_id) + "/send/m.room.encrypted/" + str(self.__get_new_txn_id()), json_para)
 
-    async def keys_upload(self, acc, user_id, device_id):
+    async def device_keys_upload(self, acc, user_id, device_id):
 
         dev_key_id = acc.identity_keys["curve25519"]
         dev_key_sig = acc.identity_keys["ed25519"]
-
-        acc.generate_one_time_keys(1)
-        one_time_key_key = list(acc.one_time_keys["curve25519"].keys())[0]
-        one_time_key_value = list(acc.one_time_keys["curve25519"].values())[0]
-        acc.mark_keys_as_published()
 
         sign_info = {
             "user_id": user_id,
@@ -432,42 +440,31 @@ class AioMatrixApi:
                         "ed25519:" + device_id: acc.sign(AioMatrixApi.canonical_json(sign_info))
                     }
                 }
-            },
-            "one_time_keys": {
-                "signed_curve25519:" + one_time_key_key: {
-                    "key": one_time_key_value,
-                    "signatures": {
-                        user_id: {
-                            "ed25519:" + device_id: acc.sign(AioMatrixApi.canonical_json({"key": one_time_key_value}))
-                        }
-                    }
-                }
             }
         }
 
         await self.__send_request('POST', "keys/upload", json_para)
 
-    async def otk_upload(self, acc, user_id, device_id):
-        acc.generate_one_time_keys(1)
-        one_time_key_key = list(acc.one_time_keys["curve25519"].keys())[0]
-        one_time_key_value = list(acc.one_time_keys["curve25519"].values())[0]
+    async def otk_upload(self, acc, user_id, device_id, amount=10):
+
+        acc.generate_one_time_keys(amount)
+        keys = list(acc.one_time_keys["curve25519"].keys())
+        values = list(acc.one_time_keys["curve25519"].values())
         acc.mark_keys_as_published()
 
-        json_para = {
-            "one_time_keys": {
-                "signed_curve25519:" + one_time_key_key: {
-                    "key": one_time_key_value,
+        json_para = {'one_time_keys': {}}
+        for key, value in zip(keys, values):
+            json_para['one_time_keys']["signed_curve25519:" + key] = {
+                    "key": value,
                     "signatures": {
                         user_id: {
-                            "ed25519:" + device_id: acc.sign(AioMatrixApi.canonical_json({"key": one_time_key_value}))
+                            "ed25519:" + device_id: acc.sign(AioMatrixApi.canonical_json({"key": value}))
                         }
                     }
                 }
-            }
-        }
 
         await self.__send_request('POST', "keys/upload", json_para)
-        return one_time_key_value
+        return values[0]
 
     # endregion
 

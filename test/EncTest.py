@@ -11,7 +11,7 @@ async def main():
 
         await room.activate_encryption()
 
-        await room.send_message("lol oh")
+        await room.send_message("lal ah")
 
 loop = asyncio.get_event_loop()
 loop.run_until_complete(main())

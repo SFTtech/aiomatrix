@@ -106,47 +106,47 @@ class Room:
         self.meg_ses = olm.OutboundGroupSession()
 
         # Loop over all members in this room:
-        # - get their keys
+        # - get their device ids
+        # - get the corresponding keys
         # - create olm session
         # - use olm to pass this room's megolm session info (stored in self.meg_ses)
         room_members = await self.get_members()
         for user_id, _ in room_members:
             # Exclude own user
             if user_id != self.session.get_user_id():
-                #TODO How to get user's device ID he joined the room with?
-                device_id = 'YPWKTLRKZG'
-                self.room_keys.append((user_id, device_id, None))
-                await self.__create_room_encryption(user_id, device_id)
+                device_ids = await self.api.get_user_device_ids(user_id)
 
-    async def __create_room_encryption(self, partner_user_id, partner_device_id):
-        self_user_id = self.session.get_user_id()
-        self_device_id = self.session.get_device_id()
+                # Pass megolm parameters to each device of the room's members
+                for device_id in device_ids:
+                    self.room_keys.append((user_id, device_id, None))
+                    await self.__enc_send_megolm_info(user_id, device_id)
 
-        # Generate and upload new One Time Keys
+    async def __enc_send_megolm_info(self, partner_user_id, partner_device_id):
+        own_user_id = self.session.get_user_id()
+        own_device_id = self.session.get_device_id()
+        own_sign_key = self.session.get_sign_key()
 
-        # You can only upload new keys when the old are read (?!)
-        # TODO: wtf? why..
-        _, sign = await self.api.keys_query(self_user_id, self_device_id)
-        await self.api.keys_claim(self_user_id, self_device_id, sign)
+        # Get an own One Time Key
 
-        self_otk = await self.api.otk_upload(self.olm_account, self_user_id, self_device_id)
+        self_otk = await self.api.keys_claim_and_verify(own_user_id, own_device_id, own_sign_key)
+        await self.api.otk_upload(self.olm_account, own_user_id, own_device_id, 1)
 
         # Get partner Identity Keys
 
-        partner_dev_key_id, partner_dev_key_sign = await self.api.keys_query(partner_user_id, partner_device_id)
+        partner_dev_key_id, partner_dev_key_sign = await self.api.keys_query_and_verify(partner_user_id, partner_device_id)
 
         # Get partner One-Time Key
 
-        partner_otk = await self.api.keys_claim(partner_user_id, partner_device_id, partner_dev_key_sign)
+        partner_otk = await self.api.keys_claim_and_verify(partner_user_id, partner_device_id, partner_dev_key_sign)
 
         # Olm Session
         ses = olm.OutboundSession(self.olm_account, partner_dev_key_id, partner_otk)
 
         await self.api.send_olm_pr_msg(partner_user_id, partner_device_id, partner_dev_key_id, partner_dev_key_sign,
-                                       self_user_id, self_device_id, self.device_key, self_otk, ses)
+                                       own_user_id, own_device_id, self.device_key, self_otk, ses)
 
         # MegOlm Session
-        await self.api.send_megolm_pr_msg(self.room_id, partner_user_id, self.device_key, self_user_id, self_otk,
+        await self.api.send_megolm_pr_msg(self.room_id, partner_user_id, self.device_key, own_user_id, self_otk,
                                           partner_device_id, partner_dev_key_sign, partner_dev_key_id, ses, self.meg_ses)
 
         # Set this room to encrypted, forces messages to be sent encrypted
