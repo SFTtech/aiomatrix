@@ -40,9 +40,8 @@ class Session:
         self.olm_sessions = dict()
 
         # Load all know olm sessions in case the partner wants to use them for other rooms to send megOlm keys
-        # TODO user specific pickle (user id, device id)
-        if os.path.exists(self.save_directory_path + 'olmSessions.pkl'):
-            tmp_dict = self.load_obj('olmSessions')
+        if os.path.exists(self.save_directory_path + 'olmSessions' + self.device_id + '.pkl'):
+            tmp_dict = self.load_obj('olmSessions' + self.device_id)
 
             for entry in tmp_dict:
                 self.olm_sessions[entry] = olm.Session.from_pickle(tmp_dict[entry], self.password)
@@ -162,7 +161,7 @@ class Session:
         for entry in self.olm_sessions:
             tmp_dict[entry] = self.olm_sessions[entry].pickle(self.password)
 
-        self.save_obj(tmp_dict, "olmSessions")
+        self.save_obj(tmp_dict, "olmSessions" + self.device_id)
 
     # region Room Methods
 
