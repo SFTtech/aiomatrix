@@ -7,6 +7,10 @@ from .api import client
 class EventManager:
     """Manages the requesting and distribution of matrix events."""
     def __init__(self, api):
+        """
+        Constructor for EventManager class.
+        :param api: LowLevel API to send/receive HTTP messages.
+        """
         self.api = api
         self.filter = client.filter.EventFilter()
         self.sync_task = None
@@ -16,8 +20,19 @@ class EventManager:
         self.subscriber_list = {
             'message': list(),
             'typing': list(),
-            'invite': list()
+            'invite': list(),
+            'encryption': list(),
+            'encrypted': list(),
+            'prekey': list(),
+            'otk': list()
         }
+
+    def get_general_queue(self):
+        """
+        Get the general event queue. This queue is used to distribute events to subscribers.
+        :return: General event queue.
+        """
+        return self.general_queue
 
     async def cancel(self):
         """
@@ -48,7 +63,7 @@ class EventManager:
         # if either new event or new room
         if len(self.subscriber_list[event]) == 1 or \
                 list(room_id for room_id, queue in self.subscriber_list[event]).count(room_id) == 1:
-            # restart queue, cause new event
+            # restart queue, cause a new event
             await self.__restart_tasks()
 
     async def remove_subscriber(self, event, queue, room_id=None):
@@ -72,7 +87,7 @@ class EventManager:
             for event_type in self.subscriber_list:
                 if self.subscriber_list[event_type]:
                     return
-            self.cancel()
+            await self.cancel()
 
     async def __sync_task(self):
         """
@@ -89,9 +104,10 @@ class EventManager:
             resp_json = await self.api.sync(self.filter.get_filter_string())
             self.api.set_since_token(resp_json["next_batch"])
 
-            event_resp = self.filter.get_filtered_event(resp_json)
-            if event_resp:
-                self.general_queue.put_nowait(event_resp)
+            event_resp_list = self.filter.get_filtered_event(resp_json)
+            if event_resp_list:
+                for event_resp in event_resp_list:
+                    self.general_queue.put_nowait(event_resp)
 
     async def __wait_general_event(self):
         """
@@ -105,6 +121,16 @@ class EventManager:
                     if event[1] == room:
                         # remove event type string and put in subscribers queues
                         subscriber.put_nowait(event[1:])
+            elif "encryption" in event[0]:
+                for room, subscriber in self.subscriber_list['encryption']:
+                    if event[1] == room:
+                        # remove event type string and put in subscribers queues
+                        subscriber.put_nowait(event[1:])
+            elif "encrypted" in event[0]:
+                for room, subscriber in self.subscriber_list['encrypted']:
+                    if event[1] == room:
+                        # remove event type string and put in subscribers queues
+                        subscriber.put_nowait(event[1:])
             elif "typing" in event[0]:
                 for room, subscriber in self.subscriber_list['typing']:
                     if event[1] == room:
@@ -114,6 +140,14 @@ class EventManager:
                 for _room, subscriber in self.subscriber_list['invite']:
                     # remove event type string and put in subscribers queues
                     subscriber.put_nowait(event[1:])
+            elif "prekey" in event[0]:
+                for _room, subscriber in self.subscriber_list['prekey']:
+                    # remove event type string and put in subscribers queues
+                    subscriber.put_nowait(event[1:])
+            elif "otk" in event[0]:
+                for _room, subscriber in self.subscriber_list['otk']:
+                    # remove event type string and put in subscribers queues
+                    subscriber.put_nowait(event[1])
             else:
                 logging.warning("Unknown event received: %s", event[0])
 

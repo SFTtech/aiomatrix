@@ -1,18 +1,18 @@
 from urllib.parse import quote_plus
 import logging
+import json
 import aiohttp
 import olm
-import json
-import asyncio
 
 from aiomatrix.errors import AiomatrixError
 
 
 class AioMatrixApi:
     """Low level class. Uses the aiohttp class to send/receive HTTP requests/responses"""
-    def __init__(self, base_url):
+    def __init__(self, base_url, supported_encryption_version):
         self.http_session = aiohttp.ClientSession()
         self.url = base_url
+        self.supported_encryption_version = supported_encryption_version
         self.txn_id = 0
         self.access_token = None
         self.since_token = None
@@ -67,24 +67,24 @@ class AioMatrixApi:
         """
         return await self.__send_request('POST', 'join/' + quote_plus(room_alias_or_id))
 
-    async def room_create(self, room_alias, name, invitees, public=False,):
+    async def room_create(self, name, invitees, room_alias, public=False,):
         """
         Creates a request for room creation.
-        :param room_alias: Alias name of the room.
         :param name: Name of the room.
         :param invitees: List of users to invite when the room is created.
+        :param room_alias: Alias name of the room.
         :param public: Visibility of the created room.
         :return: Response in JSON format.
         """
         json_para = {
             "visibility": "public" if public else "private"
         }
-        if room_alias:
-            json_para["room_alias_name"] = room_alias
         if name:
             json_para["name"] = name
         if invitees:
             json_para["invite"] = invitees
+        if room_alias:
+            json_para["room_alias_name"] = room_alias
 
         return await self.__send_request('POST', 'createRoom', json_para)
 
@@ -107,27 +107,6 @@ class AioMatrixApi:
             params['filter'] = event_filter
 
         return await self.__send_request('GET', 'sync', json_para=None, params=params)
-
-    async def delete_device(self, device_id):
-        '''json_para = {
-            "auth": {
-                "type": "m.login.password",
-                "access_token": self.access_token
-            }
-        }'''
-        json_para = {
-          "flows": [
-            {
-              "stages": [
-                "m.login.password"
-              ]
-            }
-          ],
-          "params": {},
-          "session": "VsfOaWbquLvScXsqBYDNQTgV"
-        }
-
-        return await self.__send_request('DELETE', 'devices/' + device_id, json_para)
 
     # region Room Specific functions
 
@@ -159,7 +138,7 @@ class AioMatrixApi:
                                             '/joined_members')
         user_names = []
         for user in members['joined']:
-            user_names.append((user,members['joined'][user]['display_name']))
+            user_names.append((user, members['joined'][user]['display_name']))
 
         return user_names
 
@@ -221,11 +200,21 @@ class AioMatrixApi:
 
     # region Encryption
     async def get_user_device_ids(self, acc_user_id):
+        """
+        Returns all device IDs that can be found for the given user.
+        :param acc_user_id: User ID, e.g. @bla:matrix.org
+        :return: List of all found device IDs.
+        """
         resp_json = await self.keys_query(acc_user_id)
 
         return list(resp_json['device_keys'][acc_user_id].keys())
 
     async def keys_query(self, acc_user_id):
+        """
+        Querys the device keys for a given user.
+        :param acc_user_id: User ID, e.g. @bla:matrix.org
+        :return: JSON response string.
+        """
         json_para = {
             "timeout": 10000,
             "device_keys": {
@@ -236,6 +225,12 @@ class AioMatrixApi:
         return await self.__send_request('POST', 'keys/query', json_para)
 
     async def keys_query_and_verify(self, acc_user_id, acc_device_id):
+        """
+        Querys and verifies the device keys (identity/sign) for a given device and user.
+        :param acc_user_id: User ID e.g. @bla:matrix.org
+        :param acc_device_id: Device ID e.g. "HAJSDKLSP"
+        :return: If successful: returns validated Device Identity curve25519 and Signing ed25519 key.
+        """
         # querys all keys and verifies the ones for the given device, returns id/sign key
         resp_json = await self.keys_query(acc_user_id)
 
@@ -263,18 +258,31 @@ class AioMatrixApi:
         return dev_key_id, dev_key_sign
 
     async def keys_claim(self, acc_user_id, acc_device_id):
+        """
+        Claims one one-time-key of a given user.
+        :param acc_user_id: User ID, e.g. @bla:matrix.org
+        :param acc_device_id: Device ID e.g. "ASDKWLDPS"
+        :return: JSON response string containing the OTK.
+        """
         # Only claims ONE one-time-key!
         json_para = {
-          "timeout": 10000,
-          "one_time_keys": {
-            acc_user_id: {
-              acc_device_id: "signed_curve25519"
+            "timeout": 10000,
+            "one_time_keys": {
+                acc_user_id: {
+                    acc_device_id: "signed_curve25519"
+                }
             }
-          }
         }
         return await self.__send_request('POST', 'keys/claim', json_para)
 
     async def keys_claim_and_verify(self, acc_user_id, acc_device_id, acc_sign_key):
+        """
+        Claims and returns one OTK for a given user and device
+        :param acc_user_id: User ID, e.g. @bla:matrix.org
+        :param acc_device_id: Device ID e.g. "ASDKDWLDPS"
+        :param acc_sign_key: User ed25519 device signing key (used for the verification)
+        :return: If valid key retrieved, OTK is returned
+        """
         resp_json = await self.keys_claim(acc_user_id, acc_device_id)
 
         # No one-time-keys exist
@@ -297,19 +305,37 @@ class AioMatrixApi:
         return otk
 
     async def encrypt_room(self, room_id):
+        """
+        Sends a m.room.encryption message to the room.
+        :param room_id: Room ID.
+        :return: JSON response (should not be required)
+        """
         json_para = {
-                "algorithm": "m.megolm.v1.aes-sha2",
-                "rotation_period_ms": 604800000,
-                "rotation_period_msgs": 100
+            "algorithm": self.supported_encryption_version,
+            "rotation_period_ms": 604800000,
+            "rotation_period_msgs": 100
         }
         return await self._room_send_state_event(room_id, 'm.room.encryption', json_para)
 
-    async def send_olm_pr_msg(self, receiver, rec_dev_id, rec_dev_key, rec_sign_key, sen_user_id, sen_dev_id, sen_dev_key, sen_otk, ses):
+    async def send_olm_pr_msg(self, receiver, rec_dev_id, rec_dev_key, rec_sign_key, sen_user_id, sen_dev_id, sen_dev_key, sen_key_sign, ses):
+        """
+        Creates and sends the Olm PreKey Message.
+        :param receiver: Receiver User ID.
+        :param rec_dev_id: Receiver Device ID.
+        :param rec_dev_key: Receiver Device curve25519 identification key.
+        :param rec_sign_key: Receiver Devie ed25519 signing key.
+        :param sen_user_id: Sender User ID.
+        :param sen_dev_id: Sender Device ID.
+        :param sen_dev_key: Sender Device curve 25519 identification key.
+        :param sen_key_sign: Sender Device ed25519 signing key.
+        :param ses: Olm Session used for encrypting the prekey message.
+        :return: JSON response.
+        """
         payload_json = {
             "sender": sen_user_id,
             "sender_device": sen_dev_id,
             "keys": {
-                "ed25519": sen_otk
+                "ed25519": sen_key_sign
             },
             "recipient": receiver,
             "recipient_keys": {
@@ -336,21 +362,36 @@ class AioMatrixApi:
                 }
             }
         }
+
         return await self.__send_request('PUT', "sendToDevice/m.room.encrypted/"+str(self.__get_new_txn_id()), json_para)
 
-    async def send_megolm_pr_msg(self, room_id, receiver, sen_dev_key, sen_user_id, sen_otk, rec_dev_id, rec_key_sign, rec_dev_key, ses, megses):
+    async def send_megolm_pr_msg(self, room_id, receiver, sen_dev_key, sen_user_id, sen_key_sign, rec_dev_id, rec_key_sign, rec_dev_key, ses, megses):
+        """
+        Creates and sends a MegOlm prekey message for a given room, sender and receiver.
+        :param room_id: Room ID.
+        :param receiver: Receiver User ID.
+        :param sen_dev_key: Sender Device curve25519 identification key.
+        :param sen_user_id: Sender User ID.
+        :param sen_key_sign: Sender Signing ed25519 key.
+        :param rec_dev_id: Receiver Device ID.
+        :param rec_key_sign: Receiver ed25519 signing key.
+        :param rec_dev_key: Receiver curve25519 device key.
+        :param ses: Olm session used to encrypt the message.
+        :param megses: MegOlm session used to encrypt the content and create the session keys.
+        :return: JSON response.
+        """
         ses_key = megses.session_key
 
         room_key_event = {
             "content": {
-                "algorithm": "m.megolm.v1.aes-sha2",
+                "algorithm": self.supported_encryption_version,
                 "room_id": room_id,
                 "session_id": megses.id,
                 "session_key": ses_key
             },
             "type": "m.room_key",
             "keys": {
-                "ed25519": sen_otk
+                "ed25519": sen_key_sign
             },
             "recipient": receiver,
             "sender": sen_user_id,
@@ -382,7 +423,15 @@ class AioMatrixApi:
         return await self.__send_request('PUT', "sendToDevice/m.room.encrypted/" + str(self.__get_new_txn_id()), json_para)
 
     async def send_enc(self, room_id, sen_dev_id, sen_dev_key, megses, msg):
-
+        """
+        Sends a m.room.encrypted message to a given room.
+        :param room_id: Room ID.
+        :param sen_dev_id: Sender Device ID.
+        :param sen_dev_key: Sender Device curve25519 identification key.
+        :param megses: MegOlm session used to encrypted the message content.
+        :param msg: Plaintext message.
+        :return: JSON response
+        """
         # Create content
         json_content = {
             "room_id": room_id,
@@ -396,17 +445,23 @@ class AioMatrixApi:
         enc_msg = megses.encrypt(json.dumps(json_content))
 
         json_para = {
-                    "algorithm": "m.megolm.v1.aes-sha2",
-                    "ciphertext": enc_msg,
-                    "device_id": sen_dev_id,
-                    "sender_key": sen_dev_key,
-                    "session_id": megses.id
-            }
+            "algorithm": self.supported_encryption_version,
+            "ciphertext": enc_msg,
+            "device_id": sen_dev_id,
+            "sender_key": sen_dev_key,
+            "session_id": megses.id
+        }
 
         return await self.__send_request('PUT', 'rooms/' + quote_plus(room_id) + "/send/m.room.encrypted/" + str(self.__get_new_txn_id()), json_para)
 
     async def device_keys_upload(self, acc, user_id, device_id):
-
+        """
+        Uploads new device key for the given user (curve25519 and ed25519)
+        :param acc: Olm Account.
+        :param user_id: User ID.
+        :param device_id: User device ID.
+        :return: JSON response.
+        """
         dev_key_id = acc.identity_keys["curve25519"]
         dev_key_sig = acc.identity_keys["ed25519"]
 
@@ -446,7 +501,14 @@ class AioMatrixApi:
         await self.__send_request('POST', "keys/upload", json_para)
 
     async def otk_upload(self, acc, user_id, device_id, amount=10):
-
+        """
+        Uploads new OTK for a given user/device.
+        :param acc: Olm account.
+        :param user_id: User ID.
+        :param device_id: Device ID.
+        :param amount: Amount of keys to be generated and uploaded.
+        :return: JSON response
+        """
         acc.generate_one_time_keys(amount)
         keys = list(acc.one_time_keys["curve25519"].keys())
         values = list(acc.one_time_keys["curve25519"].values())
@@ -455,16 +517,17 @@ class AioMatrixApi:
         json_para = {'one_time_keys': {}}
         for key, value in zip(keys, values):
             json_para['one_time_keys']["signed_curve25519:" + key] = {
-                    "key": value,
-                    "signatures": {
-                        user_id: {
-                            "ed25519:" + device_id: acc.sign(AioMatrixApi.canonical_json({"key": value}))
-                        }
+                "key": value,
+                "signatures": {
+                    user_id: {
+                        "ed25519:" + device_id: acc.sign(AioMatrixApi.canonical_json({'key': value}))
                     }
                 }
+            }
 
-        await self.__send_request('POST', "keys/upload", json_para)
-        return values[0]
+        resp_json = await self.__send_request('POST', "keys/upload", json_para)
+
+        return resp_json['one_time_key_counts']['signed_curve25519']
 
     # endregion
 
@@ -490,28 +553,24 @@ class AioMatrixApi:
         if http_type == 'POST':
             resp = await self.http_session.post(self.url + '/_matrix/client/r0/' + url_extension,
                                                 params=url_params,
-                                                json=json_para
-                                                )
+                                                json=json_para)
         elif http_type == 'PUT':
             resp = await self.http_session.put(self.url + '/_matrix/client/r0/' + url_extension,
                                                params=url_params,
-                                               json=json_para
-                                               )
+                                               json=json_para)
         elif http_type == 'GET':
             resp = await self.http_session.get(self.url + '/_matrix/client/r0/' + url_extension,
                                                params=url_params,
-                                               json=json_para
-                                               )
+                                               json=json_para)
         elif http_type == 'DELETE':
             resp = await self.http_session.delete(self.url + '/_matrix/client/r0/' + url_extension,
-                                               params=url_params,
-                                               json=json_para
-                                               )
+                                                  params=url_params,
+                                                  json=json_para)
         else:
             raise AiomatrixError('Access_token - Unknown HTTP method type:' + http_type)
 
         # Error handling
-        logging.debug("Response status code: \"%d\"", resp.status)
+        logging.debug(" \"%s\" - Response status code: \"%d\"", url_extension, resp.status)
         if resp.status != 200:
             err = await resp.json()
             raise AiomatrixError(err['errcode'] + ': ' + err['error'])
@@ -529,6 +588,11 @@ class AioMatrixApi:
 
     @staticmethod
     def canonical_json(value):
+        """
+        Creates a canonical JSON UTF string out of a JSON. Used to creeate singing content for encryption.
+        :param value: JSON
+        :return: UTF-8 String.
+        """
         return json.dumps(
             value,
             # Encode code-points outside of ASCII as UTF-8 rather than \u escapes
